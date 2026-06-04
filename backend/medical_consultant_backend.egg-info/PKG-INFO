@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: medical-consultant-backend
+Version: 0.1.0
+Summary: Local FastAPI backend for a personal medical AI navigator.
+Requires-Python: >=3.11
+Requires-Dist: fastapi
+Requires-Dist: httpx
+Requires-Dist: python-dotenv
+Requires-Dist: python-multipart
+Requires-Dist: uvicorn[standard]
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"

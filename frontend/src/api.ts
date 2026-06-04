@@ -1,0 +1,307 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+
+let actAsUserId: number | null = null;
+
+export function setActAsUserId(userId: number | null) {
+  actAsUserId = userId;
+}
+
+export type UserPublic = {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+};
+
+export type SessionInfo = {
+  user: UserPublic;
+  effective_user: UserPublic;
+  is_admin: boolean;
+};
+
+export type LoginRequest = {
+  username: string;
+  password: string;
+};
+
+export type UserCreate = {
+  username: string;
+  password: string;
+  display_name: string;
+};
+
+export type MedicalProfile = {
+  full_name: string;
+  age: number | null;
+  birth_date: string | null;
+  sex: string;
+  blood_type: string;
+  height_cm: number | null;
+  weight_kg: number | null;
+  diabetes_status: string;
+  cardiovascular_status: string;
+  chronic_conditions: string;
+  allergies: string;
+  medications: string;
+  family_history: string;
+  lifestyle: string;
+  activity_level: string;
+  smoking_status: string;
+  sleep_hours: number | null;
+  stress_level: string;
+  family_members: number | null;
+  notes: string;
+};
+
+export type LabResult = {
+  id: number;
+  marker_name: string;
+  value: number;
+  unit: string;
+  reference_range: string;
+  measured_at: string;
+  comment: string;
+  trend: {
+    previous_value: number | null;
+    delta: number | null;
+    direction: "baseline" | "up" | "down" | "same";
+  } | null;
+};
+
+export type LabResultCreate = Omit<LabResult, "id" | "trend">;
+
+export type DocumentRecord = {
+  id: number;
+  filename: string;
+  content_type: string;
+  path: string;
+  description: string;
+  extracted_text: string;
+  analysis_status: string;
+  created_at: string;
+};
+
+export type ComplaintCreate = {
+  symptoms: string;
+  doctor_feedback: string;
+  notes: string;
+  occurred_at: string;
+  analysis_mode?: "standard" | "complex" | "review";
+};
+
+export type ComplaintRecord = ComplaintCreate & {
+  id: number;
+  created_at: string;
+  ai_analysis: string;
+  ai_diagnosis: string;
+  ai_treatment: string;
+  ai_doctor_questions: string;
+  ai_urgency: string;
+  ai_status: string;
+  ai_opinion_comparison: string;
+};
+
+export type ConsultationChatRequest = {
+  consultation_id?: number | null;
+  message: string;
+  occurred_at?: string;
+  doctor_feedback?: string;
+  notes?: string;
+  force_complex?: boolean;
+};
+
+export type ConsultationChatResponse = {
+  consultation_id: number;
+  reply: string;
+  phase: "anamnesis" | "conclusion";
+  ai_status: string;
+  complaint: ComplaintRecord | null;
+};
+
+export type NutritionPlanResponse = {
+  ai_status: "completed" | "no_api_key" | "failed";
+  message: string;
+  menu: unknown[];
+};
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  if (!headers.has("Content-Type") && options?.body && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (actAsUserId !== null) {
+    headers.set("X-Act-As-User-Id", String(actAsUserId));
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
+    ...options,
+    headers
+  });
+
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const payload = (await response.json()) as { detail?: unknown };
+      if (typeof payload.detail === "string") {
+        detail = payload.detail;
+      } else if (Array.isArray(payload.detail)) {
+        detail = payload.detail
+          .map((item) => {
+            if (typeof item === "object" && item && "msg" in item) {
+              return String(item.msg);
+            }
+            return String(item);
+          })
+          .join("; ");
+      }
+    } catch {
+      // Keep generic HTTP status when response body is not JSON.
+    }
+
+    if (response.status === 504) {
+      throw new Error(
+        "Сервер долго ждёт ответ модели. Попробуйте ещё раз или отключите «Сложный случай»."
+      );
+    }
+
+    throw new Error(detail);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export function login(payload: LoginRequest): Promise<SessionInfo> {
+  return request<SessionInfo>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function logout(): Promise<void> {
+  return request<void>("/api/auth/logout", {
+    method: "POST"
+  });
+}
+
+export function getSession(): Promise<SessionInfo> {
+  return request<SessionInfo>("/api/auth/me");
+}
+
+export function listUsers(): Promise<UserPublic[]> {
+  return request<UserPublic[]>("/api/auth/users");
+}
+
+export function createUser(payload: UserCreate): Promise<UserPublic> {
+  return request<UserPublic>("/api/auth/users", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getProfile(): Promise<MedicalProfile> {
+  return request<MedicalProfile>("/api/profile");
+}
+
+export function saveProfile(profile: MedicalProfile): Promise<MedicalProfile> {
+  return request<MedicalProfile>("/api/profile", {
+    method: "PUT",
+    body: JSON.stringify(profile)
+  });
+}
+
+export function listLabs(): Promise<LabResult[]> {
+  return request<LabResult[]>("/api/labs");
+}
+
+export function createLab(payload: LabResultCreate): Promise<LabResult> {
+  return request<LabResult>("/api/labs", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function listComplaints(): Promise<ComplaintRecord[]> {
+  return request<ComplaintRecord[]>("/api/complaints");
+}
+
+export function createComplaint(
+  payload: ComplaintCreate
+): Promise<ComplaintRecord> {
+  return request<ComplaintRecord>("/api/complaints", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function compareOpinions(
+  id: number,
+  doctorFeedback: string
+): Promise<ComplaintRecord> {
+  return request<ComplaintRecord>(`/api/complaints/${id}/compare-opinions`, {
+    method: "POST",
+    body: JSON.stringify({ doctor_feedback: doctorFeedback })
+  });
+}
+
+export function sendConsultationChat(
+  payload: ConsultationChatRequest
+): Promise<ConsultationChatResponse> {
+  return request<ConsultationChatResponse>("/api/consultations/chat", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function generateNutritionMenu(
+  pantryItems: string[],
+  includeMedicalRecommendations: boolean
+): Promise<NutritionPlanResponse> {
+  return request<NutritionPlanResponse>("/api/nutrition/weekly-menu", {
+    method: "POST",
+    body: JSON.stringify({
+      pantry_items: pantryItems,
+      include_medical_recommendations: includeMedicalRecommendations
+    })
+  });
+}
+
+export function listDocuments(): Promise<DocumentRecord[]> {
+  return request<DocumentRecord[]>("/api/documents");
+}
+
+export async function uploadDocument(
+  file: File,
+  description: string
+): Promise<DocumentRecord> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("description", description);
+
+  const headers = new Headers();
+  if (actAsUserId !== null) {
+    headers.set("X-Act-As-User-Id", String(actAsUserId));
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/documents`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: formData
+  });
+
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const payload = (await response.json()) as { detail?: unknown };
+      if (typeof payload.detail === "string") {
+        detail = payload.detail;
+      }
+    } catch {
+      // Keep generic HTTP status when response body is not JSON.
+    }
+    throw new Error(detail);
+  }
+
+  return response.json() as Promise<DocumentRecord>;
+}

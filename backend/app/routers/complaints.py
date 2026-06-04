@@ -1,0 +1,188 @@
+"""Routes for symptoms, complaints, and physician feedback."""
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.database import get_connection
+from app.schemas import ComplaintCreate, ComplaintRecord, OpinionCompareRequest
+from app.services.auth_service import AuthContext, get_auth_context
+from app.services.opinion_comparison_service import compare_opinions
+from app.services.symptom_analyzer import analyze_complaint
+
+router = APIRouter(prefix="/complaints", tags=["complaints"])
+
+
+def _fetch_complaint(
+    connection,
+    complaint_id: int,
+    user_id: int,
+) -> ComplaintRecord:
+    """Load a complaint by id."""
+    row = connection.execute(
+        "SELECT * FROM complaints WHERE id = ? AND user_id = ?",
+        (complaint_id, user_id),
+    ).fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Complaint not found.")
+
+    return ComplaintRecord(**dict(row))
+
+
+def _complaint_to_create(record: ComplaintRecord) -> ComplaintCreate:
+    """Convert a stored complaint to an analysis payload."""
+    return ComplaintCreate(
+        symptoms=record.symptoms,
+        doctor_feedback=record.doctor_feedback,
+        notes=record.notes,
+        occurred_at=record.occurred_at,
+    )
+
+
+def _save_analysis(
+    connection,
+    complaint_id: int,
+    user_id: int,
+    analysis,
+) -> ComplaintRecord:
+    """Persist AI analysis fields for a complaint."""
+    connection.execute(
+        """
+        UPDATE complaints
+        SET
+            ai_analysis = ?,
+            ai_diagnosis = ?,
+            ai_treatment = ?,
+            ai_doctor_questions = ?,
+            ai_urgency = ?,
+            ai_status = ?
+        WHERE id = ? AND user_id = ?
+        """,
+        (
+            analysis.ai_analysis,
+            analysis.ai_diagnosis,
+            analysis.ai_treatment,
+            analysis.ai_doctor_questions,
+            analysis.ai_urgency,
+            analysis.ai_status,
+            complaint_id,
+            user_id,
+        ),
+    )
+    return _fetch_complaint(connection, complaint_id, user_id)
+
+
+@router.get("", response_model=list[ComplaintRecord])
+def list_complaints(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> list[ComplaintRecord]:
+    """Return complaint entries sorted by date."""
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM complaints
+            WHERE user_id = ?
+            ORDER BY occurred_at DESC, id DESC
+            """,
+            (auth.effective_user_id,),
+        ).fetchall()
+
+    return [ComplaintRecord(**dict(row)) for row in rows]
+
+
+@router.post("", response_model=ComplaintRecord, status_code=201)
+def create_complaint(
+    payload: ComplaintCreate,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> ComplaintRecord:
+    """Store a complaint and run AI analysis for orientational guidance."""
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO complaints (
+                user_id,
+                symptoms,
+                doctor_feedback,
+                notes,
+                occurred_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                auth.effective_user_id,
+                payload.symptoms,
+                payload.doctor_feedback,
+                payload.notes,
+                payload.occurred_at.isoformat(),
+            ),
+        )
+        complaint_id = int(cursor.lastrowid)
+
+    analysis = analyze_complaint(
+        payload,
+        analysis_mode=payload.analysis_mode,
+        user_id=auth.effective_user_id,
+    )
+
+    with get_connection() as connection:
+        return _save_analysis(
+            connection,
+            complaint_id,
+            auth.effective_user_id,
+            analysis,
+        )
+
+
+@router.post("/{complaint_id}/compare-opinions", response_model=ComplaintRecord)
+def compare_complaint_opinions(
+    complaint_id: int,
+    payload: OpinionCompareRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> ComplaintRecord:
+    """Compare assistant first opinion with the doctor's in-person opinion."""
+    try:
+        updated, result = compare_opinions(
+            complaint_id,
+            payload.doctor_feedback,
+            auth.effective_user_id,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    if result.ai_status != "completed":
+        raise HTTPException(
+            status_code=502,
+            detail=result.ai_opinion_comparison,
+        )
+
+    return updated
+
+
+@router.post("/{complaint_id}/review", response_model=ComplaintRecord)
+def review_complaint(
+    complaint_id: int,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> ComplaintRecord:
+    """Re-run analysis with the review model for a saved complaint."""
+    with get_connection() as connection:
+        record = _fetch_complaint(
+            connection,
+            complaint_id,
+            auth.effective_user_id,
+        )
+
+    analysis = analyze_complaint(
+        _complaint_to_create(record),
+        analysis_mode="review",
+        user_id=auth.effective_user_id,
+    )
+
+    with get_connection() as connection:
+        return _save_analysis(
+            connection,
+            complaint_id,
+            auth.effective_user_id,
+            analysis,
+        )

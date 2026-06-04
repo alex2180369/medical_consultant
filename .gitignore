@@ -1,0 +1,40 @@
+# Environment and secrets
+.env
+.env.*
+
+# Dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+env/
+
+# Build output
+dist/
+build/
+out/
+target/
+frontend/dist/
+
+# Caches
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.cache/
+*.py[cod]
+*$py.class
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Local data
+backend/data/
+data/
+
+# OS
+.DS_Store
+Thumbs.db
