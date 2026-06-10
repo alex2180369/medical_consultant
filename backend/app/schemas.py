@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthResponse(BaseModel):
@@ -14,47 +14,30 @@ class HealthResponse(BaseModel):
     app_env: str
 
 
-class LoginRequest(BaseModel):
-    """Family user login payload."""
-
-    username: str = Field(min_length=1, max_length=80)
-    password: str = Field(min_length=1, max_length=120)
-
-
 class UserPublic(BaseModel):
     """Public user data returned to the client."""
 
-    id: int
-    username: str
-    display_name: str
-    role: str
-
-
-class LoginResponse(BaseModel):
-    """Successful login response."""
-
-    user: UserPublic
-    effective_user: UserPublic
+    id: str
+    email: str
+    name: str
 
 
 class SessionInfo(BaseModel):
     """Current authenticated session."""
 
     user: UserPublic
-    effective_user: UserPublic
-    is_admin: bool
 
 
-class UserCreate(BaseModel):
-    """Create a family member account."""
+class AccountDeleteRequest(BaseModel):
+    """Confirm permanent account deletion."""
 
-    username: str = Field(min_length=1, max_length=80)
-    password: str = Field(min_length=4, max_length=120)
-    display_name: str = Field(default="", max_length=120)
+    confirm: bool = False
 
 
 class MedicalProfile(BaseModel):
     """Personal medical profile collected during first intake."""
+
+    model_config = ConfigDict(extra="ignore")
 
     full_name: str = ""
     age: int | None = Field(default=None, ge=0, le=130)

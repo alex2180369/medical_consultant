@@ -22,10 +22,10 @@ def list_lab_results(
             """
             SELECT *
             FROM lab_results
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY measured_at DESC, id DESC
             """,
-            (auth.effective_user_id,),
+            (auth.user_id,),
         ).fetchall()
 
         results = []
@@ -36,7 +36,7 @@ def list_lab_results(
                 marker_name=data["marker_name"],
                 current_value=float(data["value"]),
                 current_id=int(data["id"]),
-                user_id=auth.effective_user_id,
+                user_id=auth.user_id,
             )
             results.append(LabResult(**data, trend=trend))
 
@@ -50,7 +50,7 @@ def create_lab_result(
 ) -> LabResult:
     """Store a laboratory marker and compare it with previous values."""
     with get_connection() as connection:
-        cursor = connection.execute(
+        row = connection.execute(
             """
             INSERT INTO lab_results (
                 user_id,
@@ -61,29 +61,30 @@ def create_lab_result(
                 measured_at,
                 comment
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
-                auth.effective_user_id,
+                auth.user_id,
                 payload.marker_name,
                 payload.value,
                 payload.unit,
                 payload.reference_range,
-                payload.measured_at.isoformat(),
+                payload.measured_at,
                 payload.comment,
             ),
-        )
-        result_id = int(cursor.lastrowid)
+        ).fetchone()
+        result_id = int(row["id"])
         row = connection.execute(
-            "SELECT * FROM lab_results WHERE id = ? AND user_id = ?",
-            (result_id, auth.effective_user_id),
+            "SELECT * FROM lab_results WHERE id = %s AND user_id = %s",
+            (result_id, auth.user_id),
         ).fetchone()
         trend = calculate_trend(
             connection=connection,
             marker_name=payload.marker_name,
             current_value=payload.value,
             current_id=result_id,
-            user_id=auth.effective_user_id,
+            user_id=auth.user_id,
         )
 
     return LabResult(**dict(row), trend=trend)

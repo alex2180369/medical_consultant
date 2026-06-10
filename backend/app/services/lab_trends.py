@@ -10,14 +10,14 @@ def calculate_trend(
     marker_name: str,
     current_value: float,
     current_id: int,
-    user_id: int,
+    user_id: str,
 ) -> LabTrend:
     """Compare a result with the previous value of the same marker."""
     previous = connection.execute(
         """
         SELECT value
         FROM lab_results
-        WHERE marker_name = ? AND id != ? AND user_id = ?
+        WHERE marker_name = %s AND id != %s AND user_id = %s
         ORDER BY measured_at DESC, id DESC
         LIMIT 1
         """,

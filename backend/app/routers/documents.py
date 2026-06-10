@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
+from app.config import load_settings
 from app.database import get_connection
 from app.schemas import DocumentRecord
 from app.services.auth_service import AuthContext, get_auth_context
@@ -14,7 +15,7 @@ from app.services.document_analyzer import extract_document_text
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-UPLOAD_DIR = Path("./data/uploads")
+UPLOAD_DIR = load_settings().uploads_dir
 
 
 @router.get("", response_model=list[DocumentRecord])
@@ -27,10 +28,10 @@ def list_documents(
             """
             SELECT *
             FROM documents
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY created_at DESC, id DESC
             """,
-            (auth.effective_user_id,),
+            (auth.user_id,),
         ).fetchall()
 
     return [DocumentRecord(**dict(row)) for row in rows]
@@ -57,7 +58,7 @@ def upload_document(
     )
 
     with get_connection() as connection:
-        cursor = connection.execute(
+        row = connection.execute(
             """
             INSERT INTO documents (
                 user_id,
@@ -68,10 +69,11 @@ def upload_document(
                 extracted_text,
                 analysis_status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
-                auth.effective_user_id,
+                auth.user_id,
                 original_name,
                 file.content_type or "",
                 str(destination),
@@ -79,11 +81,11 @@ def upload_document(
                 extraction.extracted_text,
                 extraction.analysis_status,
             ),
-        )
-        document_id = int(cursor.lastrowid)
+        ).fetchone()
+        document_id = int(row["id"])
         row = connection.execute(
-            "SELECT * FROM documents WHERE id = ? AND user_id = ?",
-            (document_id, auth.effective_user_id),
+            "SELECT * FROM documents WHERE id = %s AND user_id = %s",
+            (document_id, auth.user_id),
         ).fetchone()
 
     return DocumentRecord(**dict(row))

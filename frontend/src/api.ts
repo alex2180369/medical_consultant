@@ -1,33 +1,15 @@
+import { getAuthJwt } from "./lib/appwrite";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
-let actAsUserId: number | null = null;
-
-export function setActAsUserId(userId: number | null) {
-  actAsUserId = userId;
-}
-
 export type UserPublic = {
-  id: number;
-  username: string;
-  display_name: string;
-  role: string;
+  id: string;
+  email: string;
+  name: string;
 };
 
 export type SessionInfo = {
   user: UserPublic;
-  effective_user: UserPublic;
-  is_admin: boolean;
-};
-
-export type LoginRequest = {
-  username: string;
-  password: string;
-};
-
-export type UserCreate = {
-  username: string;
-  password: string;
-  display_name: string;
 };
 
 export type MedicalProfile = {
@@ -124,17 +106,24 @@ export type NutritionPlanResponse = {
   menu: unknown[];
 };
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function buildHeaders(options?: RequestInit): Promise<Headers> {
   const headers = new Headers(options?.headers);
   if (!headers.has("Content-Type") && options?.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  if (actAsUserId !== null) {
-    headers.set("X-Act-As-User-Id", String(actAsUserId));
+
+  const jwt = await getAuthJwt();
+  if (jwt) {
+    headers.set("Authorization", `Bearer ${jwt}`);
   }
 
+  return headers;
+}
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = await buildHeaders(options);
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: "include",
     ...options,
     headers
   });
@@ -168,34 +157,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(detail);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
-}
-
-export function login(payload: LoginRequest): Promise<SessionInfo> {
-  return request<SessionInfo>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-}
-
-export function logout(): Promise<void> {
-  return request<void>("/api/auth/logout", {
-    method: "POST"
-  });
 }
 
 export function getSession(): Promise<SessionInfo> {
   return request<SessionInfo>("/api/auth/me");
 }
 
-export function listUsers(): Promise<UserPublic[]> {
-  return request<UserPublic[]>("/api/auth/users");
-}
-
-export function createUser(payload: UserCreate): Promise<UserPublic> {
-  return request<UserPublic>("/api/auth/users", {
-    method: "POST",
-    body: JSON.stringify(payload)
+export function deleteAccount(): Promise<void> {
+  return request<void>("/api/account", {
+    method: "DELETE",
+    body: JSON.stringify({ confirm: true })
   });
 }
 
@@ -223,15 +199,6 @@ export function createLab(payload: LabResultCreate): Promise<LabResult> {
 
 export function listComplaints(): Promise<ComplaintRecord[]> {
   return request<ComplaintRecord[]>("/api/complaints");
-}
-
-export function createComplaint(
-  payload: ComplaintCreate
-): Promise<ComplaintRecord> {
-  return request<ComplaintRecord>("/api/complaints", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
 }
 
 export function compareOpinions(
@@ -278,14 +245,11 @@ export async function uploadDocument(
   formData.append("file", file);
   formData.append("description", description);
 
-  const headers = new Headers();
-  if (actAsUserId !== null) {
-    headers.set("X-Act-As-User-Id", String(actAsUserId));
-  }
+  const headers = await buildHeaders();
+  headers.delete("Content-Type");
 
   const response = await fetch(`${API_BASE_URL}/api/documents`, {
     method: "POST",
-    credentials: "include",
     headers,
     body: formData
   });

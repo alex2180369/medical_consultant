@@ -1,4 +1,4 @@
-"""FastAPI application for the local medical AI navigator."""
+"""FastAPI application for the medical AI navigator."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import load_settings
 from app.database import initialize_database
 from app.routers import (
+    account,
     auth,
     complaints,
     consultations,
@@ -19,6 +20,8 @@ from app.routers import (
 )
 from app.schemas import HealthResponse
 
+settings = load_settings()
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -27,26 +30,31 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-settings = load_settings()
 app = FastAPI(
     title=settings.app_name,
     description=(
-        "Local personal medical assistant. Informational support only; "
+        "Personal medical assistant. Informational support only; "
         "not a substitute for in-person medical care."
     ),
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://помощники-консультанты.рф",
+        "http://помощники-консультанты.рф",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(account.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
 app.include_router(labs.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")

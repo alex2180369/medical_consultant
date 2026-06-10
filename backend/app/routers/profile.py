@@ -19,8 +19,8 @@ def get_profile(
     """Return the stored medical profile or an empty profile."""
     with get_connection() as connection:
         row = connection.execute(
-            "SELECT * FROM profiles WHERE user_id = ?",
-            (auth.effective_user_id,),
+            "SELECT * FROM profiles WHERE user_id = %s",
+            (auth.user_id,),
         ).fetchone()
 
     if row is None:
@@ -63,7 +63,7 @@ def save_profile(
                 updated_at
             )
             VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 CURRENT_TIMESTAMP
             )
             ON CONFLICT(user_id) DO UPDATE SET
@@ -90,10 +90,10 @@ def save_profile(
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
-                auth.effective_user_id,
+                auth.user_id,
                 profile.full_name,
                 profile.age,
-                profile.birth_date.isoformat() if profile.birth_date else None,
+                profile.birth_date,
                 profile.sex,
                 profile.blood_type,
                 profile.height_cm,
@@ -114,8 +114,8 @@ def save_profile(
             ),
         )
         row = connection.execute(
-            "SELECT * FROM profiles WHERE user_id = ?",
-            (auth.effective_user_id,),
+            "SELECT * FROM profiles WHERE user_id = %s",
+            (auth.user_id,),
         ).fetchone()
 
     if row is None:

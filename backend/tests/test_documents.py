@@ -4,30 +4,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.config import Settings
 from app.main import app
 from app.services.document_analyzer import (
     extract_document_text,
     format_documents_for_context,
 )
-
-
-def _settings() -> Settings:
-    """Build test settings without external API keys."""
-    return Settings(
-        app_env="test",
-        app_name="test",
-        database_path=Path(":memory:"),
-        aitunnel_api_key=None,
-        proxyapi_api_key=None,
-        symptoms_model="symptoms-model",
-        medications_model="medications-model",
-        complex_symptoms_model="complex-model",
-        review_model="review-model",
-        imaging_model="imaging-model",
-        aitunnel_base_url="https://api.aitunnel.ru/v1",
-        proxyapi_base_url="https://api.proxyapi.ru/openai/v1",
-    )
+from tests.test_settings import make_test_settings
 
 
 def test_extract_text_file() -> None:
@@ -39,7 +21,7 @@ def test_extract_text_file() -> None:
     result = extract_document_text(
         path,
         description="ОАК",
-        settings=_settings(),
+        settings=make_test_settings(),
     )
 
     assert result.analysis_status == "completed"
@@ -50,7 +32,7 @@ def test_extract_text_file() -> None:
 def test_format_documents_for_context() -> None:
     """Recent documents should be rendered for the LLM prompt."""
     rendered = format_documents_for_context(
-        1,
+        "test-user",
         [
             {
                 "filename": "oak.txt",
@@ -76,10 +58,7 @@ def test_upload_document_endpoint(tmp_path, monkeypatch) -> None:
     sample.write_text("CRP 12", encoding="utf-8")
 
     with TestClient(app) as client:
-        client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "admin"},
-        )
+        client.headers.update({"Authorization": "Bearer test-user"})
         with sample.open("rb") as handle:
             response = client.post(
                 "/api/documents",

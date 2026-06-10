@@ -7,7 +7,6 @@ import {
   LabResultCreate,
   MedicalProfile,
   SessionInfo,
-  UserPublic,
   createLab,
   compareOpinions,
   DocumentRecord,
@@ -16,14 +15,21 @@ import {
   listComplaints,
   listDocuments,
   listLabs,
-  listUsers,
-  logout,
   saveProfile,
   sendConsultationChat,
-  setActAsUserId,
   uploadDocument
 } from "./api";
-import { LoginPage } from "./components/LoginPage";
+import { LoginPage } from "./components/auth/LoginPage";
+import { RecoverPage } from "./components/auth/RecoverPage";
+import { RegisterPage } from "./components/auth/RegisterPage";
+import {
+  AboutAppContent,
+  LegalInfoContent,
+  LegalPage,
+  PrivacyPolicyContent
+} from "./components/LegalPage";
+import { SettingsPage } from "./components/SettingsPage";
+import { getCurrentUser, logoutFromAppwrite } from "./lib/appwrite";
 import {
   formatAssistantReply,
   OpinionComparisonView
@@ -117,7 +123,13 @@ type AppPage =
   | "trends"
   | "history"
   | "nutrition"
-  | "fitness";
+  | "fitness"
+  | "settings"
+  | "privacy"
+  | "about"
+  | "legal";
+
+type AuthView = "login" | "register" | "recover";
 
 const CHAT_WELCOME =
   "Здравствуйте! Расскажите о симптомах — я соберу анамнез и сформирую " +
@@ -132,7 +144,11 @@ const PAGE_TITLES: Record<AppPage, string> = {
   trends: "Тренды показателей",
   history: "История обращений",
   nutrition: "ИИ Нутрициолог",
-  fitness: "ИИ Фитнес-тренер"
+  fitness: "ИИ Фитнес-тренер",
+  settings: "Настройки",
+  privacy: "Политика конфиденциальности",
+  about: "О приложении",
+  legal: "Правовая информация"
 };
 
 function getUserInitials(name: string): string {
@@ -154,9 +170,9 @@ function createWelcomeMessages(): ChatMessage[] {
 
 function App() {
   const [session, setSession] = useState<SessionInfo | null>(null);
-  const [familyUsers, setFamilyUsers] = useState<UserPublic[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
-  const [actAsUserId, setActAsUserIdState] = useState<number | null>(null);
+  const [authView, setAuthView] = useState<AuthView>("login");
+  const [authLegalPage, setAuthLegalPage] = useState<"privacy" | null>(null);
 
   const [activePage, setActivePage] = useState<AppPage>("dashboard");
   const [isChatHistoryCollapsed, setIsChatHistoryCollapsed] = useState(false);
@@ -213,23 +229,12 @@ function App() {
   async function bootstrapSession() {
     setAuthLoading(true);
     try {
+      await getCurrentUser();
       const currentSession = await getSession();
       setSession(currentSession);
-      const effectiveId = currentSession.effective_user.id;
-      setActAsUserIdState(effectiveId);
-      setActAsUserId(effectiveId);
-
-      if (currentSession.is_admin) {
-        setFamilyUsers(await listUsers());
-      } else {
-        setFamilyUsers([]);
-      }
-
       setStatus("");
     } catch {
       setSession(null);
-      setActAsUserIdState(null);
-      setActAsUserId(null);
     } finally {
       setAuthLoading(false);
     }
@@ -240,27 +245,20 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (actAsUserId === null || session === null) {
+    if (session === null) {
       return;
     }
 
-    setActAsUserId(actAsUserId);
     void loadWorkspaceData().catch(() =>
       setStatus("Backend пока недоступен.")
     );
-  }, [actAsUserId, session]);
+  }, [session]);
 
   async function handleLogout() {
-    await logout();
+    await logoutFromAppwrite();
     setSession(null);
-    setActAsUserIdState(null);
-    setActAsUserId(null);
     resetComplaintChat();
-  }
-
-  function handleActAsUserChange(userId: number) {
-    setActAsUserIdState(userId);
-    resetComplaintChat();
+    setAuthView("login");
   }
 
   useEffect(() => {
@@ -485,10 +483,7 @@ function App() {
     });
   }
 
-  const displayName =
-    session?.effective_user.display_name ||
-    session?.effective_user.username ||
-    "Пользователь";
+  const displayName = session?.user.name || session?.user.email || "Пользователь";
 
   const pageTitle = PAGE_TITLES[activePage];
 
@@ -938,13 +933,9 @@ function App() {
             <div className="stat-label">Анализов и файлов</div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon purple">👨‍👩‍👧‍👦</div>
-            <div className="stat-value">
-              {session?.is_admin ? familyUsers.length : 1}
-            </div>
-            <div className="stat-label">
-              {session?.is_admin ? "Пользователей" : "Профиль"}
-            </div>
+            <div className="stat-icon purple">👤</div>
+            <div className="stat-value">1</div>
+            <div className="stat-label">Профиль</div>
           </div>
         </div>
 
@@ -1454,6 +1445,48 @@ function App() {
         return <NutritionPlanner profile={profile} complaints={complaints} />;
       case "fitness":
         return renderComingSoon("fitness");
+      case "settings":
+        return (
+          <SettingsPage
+            email={session?.user.email ?? ""}
+            name={session?.user.name ?? ""}
+            onPrivacy={() => navigateTo("privacy")}
+            onAbout={() => navigateTo("about")}
+            onLegal={() => navigateTo("legal")}
+            onLogout={() => void handleLogout()}
+            onDeleted={() => {
+              setSession(null);
+              setAuthView("login");
+            }}
+          />
+        );
+      case "privacy":
+        return (
+          <LegalPage
+            title="Политика конфиденциальности"
+            onBack={() => navigateTo(session ? "settings" : "dashboard")}
+          >
+            <PrivacyPolicyContent />
+          </LegalPage>
+        );
+      case "about":
+        return (
+          <LegalPage
+            title="О приложении"
+            onBack={() => navigateTo(session ? "settings" : "dashboard")}
+          >
+            <AboutAppContent />
+          </LegalPage>
+        );
+      case "legal":
+        return (
+          <LegalPage
+            title="Правовая информация"
+            onBack={() => navigateTo(session ? "settings" : "dashboard")}
+          >
+            <LegalInfoContent />
+          </LegalPage>
+        );
       default:
         return renderDashboard();
     }
@@ -1474,10 +1507,48 @@ function App() {
   }
 
   if (!session) {
-    return <LoginPage onSuccess={() => void bootstrapSession()} />;
-  }
+    if (authLegalPage === "privacy") {
+      return (
+        <div className="auth-screen">
+          <div className="auth-card auth-card-wide">
+            <LegalPage
+              title="Политика конфиденциальности"
+              onBack={() => setAuthLegalPage(null)}
+            >
+              <PrivacyPolicyContent />
+            </LegalPage>
+          </div>
+        </div>
+      );
+    }
 
-  const userRole = session.is_admin ? "Администратор" : "Семья";
+    if (authView === "register") {
+      return (
+        <RegisterPage
+          onSuccess={() => void bootstrapSession()}
+          onLogin={() => setAuthView("login")}
+          onPrivacy={() => setAuthLegalPage("privacy")}
+        />
+      );
+    }
+
+    if (authView === "recover") {
+      return (
+        <RecoverPage
+          onLogin={() => setAuthView("login")}
+          onRegister={() => setAuthView("register")}
+        />
+      );
+    }
+
+    return (
+      <LoginPage
+        onSuccess={() => void bootstrapSession()}
+        onRegister={() => setAuthView("register")}
+        onRecover={() => setAuthView("recover")}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -1554,6 +1625,18 @@ function App() {
           </div>
 
           <div className="nav-section">
+            <div className="nav-section-title">Аккаунт</div>
+            <button
+              className={`nav-item ${activePage === "settings" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => navigateTo("settings")}
+            >
+              <span className="icon">⚙️</span>
+              Настройки
+            </button>
+          </div>
+
+          <div className="nav-section">
             <div className="nav-section-title">Специалисты</div>
             <button
               className={`nav-item ${activePage === "fitness" ? "is-active" : ""}`}
@@ -1619,7 +1702,7 @@ function App() {
             <div className="user-avatar">{getUserInitials(displayName)}</div>
             <div className="user-details">
               <div className="name">{displayName}</div>
-              <div className="role">{userRole}</div>
+              <div className="role">{session.user.email}</div>
             </div>
             <button
               className="logout-btn"
@@ -1630,22 +1713,6 @@ function App() {
               🚪
             </button>
           </div>
-          {session.is_admin && familyUsers.length > 0 && (
-            <label className="sidebar-user-select">
-              <select
-                value={actAsUserId ?? session.effective_user.id}
-                onChange={(event) =>
-                  handleActAsUserChange(Number(event.target.value))
-                }
-              >
-                {familyUsers.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.display_name || user.username}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
         </div>
       </aside>
 

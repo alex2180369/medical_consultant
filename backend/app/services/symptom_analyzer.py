@@ -91,11 +91,11 @@ class SymptomAnalysisResult:
     ai_urgency: str
 
 
-def _load_profile(user_id: int) -> MedicalProfile:
+def _load_profile(user_id: str) -> MedicalProfile:
     """Load the stored medical profile."""
     with get_connection() as connection:
         row = connection.execute(
-            "SELECT * FROM profiles WHERE user_id = ?",
+            "SELECT * FROM profiles WHERE user_id = %s",
             (user_id,),
         ).fetchone()
 
@@ -105,16 +105,16 @@ def _load_profile(user_id: int) -> MedicalProfile:
     return MedicalProfile(**dict(row))
 
 
-def _load_recent_labs(user_id: int, limit: int = 8) -> list[str]:
+def _load_recent_labs(user_id: str, limit: int = 8) -> list[str]:
     """Load recent laboratory markers for context."""
     with get_connection() as connection:
         rows = connection.execute(
             """
             SELECT marker_name, value, unit, measured_at
             FROM lab_results
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY measured_at DESC, id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (user_id, limit),
         ).fetchall()
@@ -237,7 +237,7 @@ def _should_use_complex_analysis(
     if sum(keyword in text for keyword in COMPLEX_KEYWORDS) >= 2:
         return True
 
-    symptom_parts = re.split(r"[,;\n]|(?:\s+и\s+)", complaint.symptoms)
+    symptom_parts = re.split(r"[,;\n]|(%s:\s+и\s+)", complaint.symptoms)
     if len([part for part in symptom_parts if part.strip()]) >= 4:
         return True
 
@@ -308,7 +308,7 @@ def analyze_complaint(
     settings: Settings | None = None,
     *,
     analysis_mode: AnalysisMode = "standard",
-    user_id: int = 1,
+    user_id: str = "test-user",
 ) -> SymptomAnalysisResult:
     """Analyze a complaint and return orientational medical guidance."""
     settings = settings or load_settings()

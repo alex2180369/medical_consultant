@@ -1,35 +1,16 @@
 """Tests for model route selection."""
 
 from datetime import date
-from pathlib import Path
 
-from app.config import Settings
 from app.schemas import ComplaintCreate, MedicalProfile
 from app.services.llm_router import LlmTask, resolve_model_route
 from app.services.symptom_analyzer import resolve_symptom_task
-
-
-def _settings() -> Settings:
-    """Build test settings with explicit model names."""
-    return Settings(
-        app_env="test",
-        app_name="test",
-        database_path=Path(":memory:"),
-        aitunnel_api_key=None,
-        proxyapi_api_key=None,
-        symptoms_model="symptoms-model",
-        medications_model="medications-model",
-        complex_symptoms_model="complex-model",
-        review_model="review-model",
-        imaging_model="imaging-model",
-        aitunnel_base_url="https://api.aitunnel.ru/v1",
-        proxyapi_base_url="https://api.proxyapi.ru/v1",
-    )
+from tests.test_settings import make_test_settings
 
 
 def test_resolve_imaging_route_uses_proxyapi() -> None:
     """Imaging tasks should use the configured proxyapi.ru model."""
-    route = resolve_model_route(LlmTask.IMAGING, _settings())
+    route = resolve_model_route(LlmTask.IMAGING, make_test_settings())
 
     assert route.provider == "proxyapi.ru"
     assert route.model == "imaging-model"
@@ -37,7 +18,7 @@ def test_resolve_imaging_route_uses_proxyapi() -> None:
 
 def test_resolve_complex_and_review_routes_use_aitunnel() -> None:
     """Complex and review tasks should stay on aitunnel.ru."""
-    settings = _settings()
+    settings = make_test_settings()
 
     complex_route = resolve_model_route(LlmTask.COMPLEX_SYMPTOMS, settings)
     review_route = resolve_model_route(LlmTask.REVIEW, settings)
