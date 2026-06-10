@@ -42,7 +42,7 @@ CONSULTATION_SYSTEM_PROMPT = """
 - Учитывай загруженные документы (анализы, PDF, снимки) из контекста.
 - На этапе conclusion сформулируй первое мнение простым языком.
 - Если даёшь рекомендации по питанию или ограничениям рациона, в конце спроси:
-  "Разрешаете учесть эти рекомендации в ИИ-нутрициологе при обновлении меню?"
+  "Разрешаете учесть эти рекомендации в ИИ-нутрициологе при обновлении меню%s"
 - Это информационная поддержка, не замена очного приёма.
 - При признаках экстренности — явно рекомендуй срочную помощь.
 - Пиши на русском.
@@ -107,14 +107,14 @@ def _extract_json(content: str) -> dict[str, object]:
 
 
 def _create_consultation(
-    user_id: int,
+    user_id: str,
     occurred_at: date,
     doctor_feedback: str,
     notes: str,
 ) -> int:
     """Create a new active consultation session."""
     with get_connection() as connection:
-        cursor = connection.execute(
+        row = connection.execute(
             """
             INSERT INTO consultations (
                 user_id,
@@ -123,18 +123,19 @@ def _create_consultation(
                 notes,
                 status
             )
-            VALUES (?, ?, ?, ?, 'active')
+            VALUES (%s, %s, %s, %s, 'active')
+            RETURNING id
             """,
-            (user_id, occurred_at.isoformat(), doctor_feedback, notes),
-        )
-        return int(cursor.lastrowid)
+            (user_id, occurred_at, doctor_feedback, notes),
+        ).fetchone()
+        return int(row["id"])
 
 
-def _load_consultation_meta(consultation_id: int, user_id: int) -> dict[str, str]:
+def _load_consultation_meta(consultation_id: int, user_id: str) -> dict[str, str]:
     """Load consultation metadata."""
     with get_connection() as connection:
         row = connection.execute(
-            "SELECT * FROM consultations WHERE id = ? AND user_id = ?",
+            "SELECT * FROM consultations WHERE id = %s AND user_id = %s",
             (consultation_id, user_id),
         ).fetchone()
 
@@ -154,7 +155,7 @@ def _load_messages(consultation_id: int) -> list[StoredMessage]:
             """
             SELECT role, content
             FROM consultation_messages
-            WHERE consultation_id = ?
+            WHERE consultation_id = %s
             ORDER BY id ASC
             """,
             (consultation_id,),
@@ -169,7 +170,7 @@ def _save_message(consultation_id: int, role: str, content: str) -> None:
         connection.execute(
             """
             INSERT INTO consultation_messages (consultation_id, role, content)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             """,
             (consultation_id, role, content),
         )
@@ -181,7 +182,7 @@ def _build_context_block(
     doctor_feedback: str,
     notes: str,
     user_turns: int,
-    user_id: int,
+    user_id: str,
 ) -> str:
     """Build static context for the consultation prompt."""
     lab_block = "\n".join(f"- {item}" for item in labs) if labs else "Нет данных."
@@ -287,7 +288,7 @@ def _resolve_consultation_task(
 
 
 def _save_complaint_from_consultation(
-    user_id: int,
+    user_id: str,
     consultation_id: int,
     occurred_at: date,
     doctor_feedback: str,
@@ -297,7 +298,7 @@ def _save_complaint_from_consultation(
 ) -> ComplaintRecord:
     """Persist a completed consultation as a complaint record."""
     with get_connection() as connection:
-        cursor = connection.execute(
+        row = connection.execute(
             """
             INSERT INTO complaints (
                 user_id,
@@ -312,14 +313,15 @@ def _save_complaint_from_consultation(
                 ai_urgency,
                 ai_status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
                 user_id,
                 symptoms,
                 doctor_feedback,
                 notes,
-                occurred_at.isoformat(),
+                occurred_at,
                 analysis.ai_analysis,
                 analysis.ai_diagnosis,
                 analysis.ai_treatment,
@@ -327,18 +329,18 @@ def _save_complaint_from_consultation(
                 analysis.ai_urgency,
                 analysis.ai_status,
             ),
-        )
-        complaint_id = int(cursor.lastrowid)
+        ).fetchone()
+        complaint_id = int(row["id"])
         connection.execute(
             """
             UPDATE consultations
-            SET status = 'completed', complaint_id = ?
-            WHERE id = ? AND user_id = ?
+            SET status = 'completed', complaint_id = %s
+            WHERE id = %s AND user_id = %s
             """,
             (complaint_id, consultation_id, user_id),
         )
         row = connection.execute(
-            "SELECT * FROM complaints WHERE id = ? AND user_id = ?",
+            "SELECT * FROM complaints WHERE id = %s AND user_id = %s",
             (complaint_id, user_id),
         ).fetchone()
 
@@ -348,7 +350,7 @@ def _save_complaint_from_consultation(
 def continue_consultation(
     *,
     message: str,
-    user_id: int,
+    user_id: str,
     consultation_id: int | None = None,
     occurred_at: date | None = None,
     doctor_feedback: str = "",
@@ -370,6 +372,17 @@ def continue_consultation(
     else:
         _load_consultation_meta(consultation_id, user_id)
 
+    from app.services.pii_filter import PII_WARNING, detect_sensitive_data
+
+    pii_result = detect_sensitive_data(cleaned_message)
+    if pii_result.contains_pii:
+        return ConsultationTurnResult(
+            consultation_id=consultation_id,
+            reply=PII_WARNING,
+            phase="anamnesis",
+            ai_status="pii_blocked",
+        )
+
     _save_message(consultation_id, "user", cleaned_message)
 
     if not settings.aitunnel_api_key:
@@ -390,7 +403,12 @@ def continue_consultation(
     profile = _load_profile(user_id)
     labs = _load_recent_labs(user_id)
     user_turns = sum(1 for item in messages if item.role == "user")
-    occurred = date.fromisoformat(meta["occurred_at"])
+    occurred_value = meta["occurred_at"]
+    occurred = (
+        occurred_value
+        if isinstance(occurred_value, date)
+        else date.fromisoformat(str(occurred_value))
+    )
 
     complaint = ComplaintCreate(
         symptoms=_compile_symptoms(messages),

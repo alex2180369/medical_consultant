@@ -8,6 +8,7 @@ from app.database import get_connection
 from app.schemas import ComplaintCreate, ComplaintRecord, OpinionCompareRequest
 from app.services.auth_service import AuthContext, get_auth_context
 from app.services.opinion_comparison_service import compare_opinions
+from app.services.pii_filter import PII_WARNING, detect_sensitive_data
 from app.services.symptom_analyzer import analyze_complaint
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
@@ -16,11 +17,11 @@ router = APIRouter(prefix="/complaints", tags=["complaints"])
 def _fetch_complaint(
     connection,
     complaint_id: int,
-    user_id: int,
+    user_id: str,
 ) -> ComplaintRecord:
     """Load a complaint by id."""
     row = connection.execute(
-        "SELECT * FROM complaints WHERE id = ? AND user_id = ?",
+        "SELECT * FROM complaints WHERE id = %s AND user_id = %s",
         (complaint_id, user_id),
     ).fetchone()
 
@@ -43,7 +44,7 @@ def _complaint_to_create(record: ComplaintRecord) -> ComplaintCreate:
 def _save_analysis(
     connection,
     complaint_id: int,
-    user_id: int,
+    user_id: str,
     analysis,
 ) -> ComplaintRecord:
     """Persist AI analysis fields for a complaint."""
@@ -51,13 +52,13 @@ def _save_analysis(
         """
         UPDATE complaints
         SET
-            ai_analysis = ?,
-            ai_diagnosis = ?,
-            ai_treatment = ?,
-            ai_doctor_questions = ?,
-            ai_urgency = ?,
-            ai_status = ?
-        WHERE id = ? AND user_id = ?
+            ai_analysis = %s,
+            ai_diagnosis = %s,
+            ai_treatment = %s,
+            ai_doctor_questions = %s,
+            ai_urgency = %s,
+            ai_status = %s
+        WHERE id = %s AND user_id = %s
         """,
         (
             analysis.ai_analysis,
@@ -83,10 +84,10 @@ def list_complaints(
             """
             SELECT *
             FROM complaints
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY occurred_at DESC, id DESC
             """,
-            (auth.effective_user_id,),
+            (auth.user_id,),
         ).fetchall()
 
     return [ComplaintRecord(**dict(row)) for row in rows]
@@ -98,8 +99,16 @@ def create_complaint(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> ComplaintRecord:
     """Store a complaint and run AI analysis for orientational guidance."""
+    combined_text = " ".join(
+        part
+        for part in [payload.symptoms, payload.notes, payload.doctor_feedback]
+        if part.strip()
+    )
+    if detect_sensitive_data(combined_text).contains_pii:
+        raise HTTPException(status_code=400, detail=PII_WARNING)
+
     with get_connection() as connection:
-        cursor = connection.execute(
+        row = connection.execute(
             """
             INSERT INTO complaints (
                 user_id,
@@ -108,29 +117,30 @@ def create_complaint(
                 notes,
                 occurred_at
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
-                auth.effective_user_id,
+                auth.user_id,
                 payload.symptoms,
                 payload.doctor_feedback,
                 payload.notes,
-                payload.occurred_at.isoformat(),
+                payload.occurred_at,
             ),
-        )
-        complaint_id = int(cursor.lastrowid)
+        ).fetchone()
+        complaint_id = int(row["id"])
 
     analysis = analyze_complaint(
         payload,
         analysis_mode=payload.analysis_mode,
-        user_id=auth.effective_user_id,
+        user_id=auth.user_id,
     )
 
     with get_connection() as connection:
         return _save_analysis(
             connection,
             complaint_id,
-            auth.effective_user_id,
+            auth.user_id,
             analysis,
         )
 
@@ -146,7 +156,7 @@ def compare_complaint_opinions(
         updated, result = compare_opinions(
             complaint_id,
             payload.doctor_feedback,
-            auth.effective_user_id,
+            auth.user_id,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -170,19 +180,19 @@ def review_complaint(
         record = _fetch_complaint(
             connection,
             complaint_id,
-            auth.effective_user_id,
+            auth.user_id,
         )
 
     analysis = analyze_complaint(
         _complaint_to_create(record),
         analysis_mode="review",
-        user_id=auth.effective_user_id,
+        user_id=auth.user_id,
     )
 
     with get_connection() as connection:
         return _save_analysis(
             connection,
             complaint_id,
-            auth.effective_user_id,
+            auth.user_id,
             analysis,
         )

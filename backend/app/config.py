@@ -13,7 +13,8 @@ class Settings:
 
     app_env: str
     app_name: str
-    database_path: Path
+    database_url: str
+    uploads_dir: Path
     aitunnel_api_key: str | None
     proxyapi_api_key: str | None
     symptoms_model: str
@@ -23,6 +24,9 @@ class Settings:
     imaging_model: str
     aitunnel_base_url: str
     proxyapi_base_url: str
+    appwrite_endpoint: str
+    appwrite_project_id: str
+    appwrite_api_key: str | None
     nutrition_model: str = "claude-sonnet-4.6"
 
 
@@ -33,9 +37,11 @@ def load_settings() -> Settings:
     return Settings(
         app_env=environ.get("APP_ENV", "development"),
         app_name=environ.get("APP_NAME", "Локальный медицинский ИИ-навигатор"),
-        database_path=Path(
-            environ.get("DATABASE_PATH", "./data/medical_consultant.sqlite3")
+        database_url=environ.get(
+            "DATABASE_URL",
+            "postgresql://medical:medical@postgres:5432/medical_consultant",
         ),
+        uploads_dir=Path(environ.get("UPLOADS_DIR", "./data/uploads")),
         aitunnel_api_key=environ.get("AITUNNEL_API_KEY"),
         proxyapi_api_key=environ.get("PROXYAPI_API_KEY"),
         symptoms_model=environ.get("SYMPTOMS_MODEL", "qwen3.5-plus-02-15"),
@@ -54,4 +60,9 @@ def load_settings() -> Settings:
         proxyapi_base_url=environ.get(
             "PROXYAPI_BASE_URL", "https://api.proxyapi.ru/openai/v1"
         ),
+        appwrite_endpoint=environ.get(
+            "APPWRITE_ENDPOINT", "https://cloud.appwrite.io/v1"
+        ),
+        appwrite_project_id=environ.get("APPWRITE_PROJECT_ID", ""),
+        appwrite_api_key=environ.get("APPWRITE_API_KEY"),
     )

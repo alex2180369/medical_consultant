@@ -1,35 +1,21 @@
 """Tests for multi-turn consultation chat."""
 
 from datetime import date
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.config import Settings
 from app.main import app
 from app.services.consultation_service import continue_consultation
+from tests.test_settings import make_test_settings
 
 
 def test_consultation_without_api_key() -> None:
     """Consultation should respond gracefully without an API key."""
-    settings = Settings(
-        app_env="test",
-        app_name="test",
-        database_path=Path(":memory:"),
-        aitunnel_api_key=None,
-        proxyapi_api_key=None,
-        symptoms_model="symptoms-model",
-        medications_model="medications-model",
-        complex_symptoms_model="complex-model",
-        review_model="review-model",
-        imaging_model="imaging-model",
-        aitunnel_base_url="https://api.aitunnel.ru/v1",
-        proxyapi_base_url="https://api.proxyapi.ru/v1",
-    )
+    settings = make_test_settings()
 
     result = continue_consultation(
         message="После визита к терапевту осталась слабость",
-        user_id=1,
+        user_id="test-user",
         occurred_at=date(2026, 5, 22),
         settings=settings,
     )
@@ -64,12 +50,14 @@ def test_consultation_chat_anamnesis_turn(monkeypatch) -> None:
         "chat_completion",
         fake_chat_completion,
     )
+    monkeypatch.setattr(
+        consultation_service,
+        "load_settings",
+        lambda: make_test_settings(aitunnel_api_key="test-key"),
+    )
 
     with TestClient(app) as client:
-        client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "admin"},
-        )
+        client.headers.update({"Authorization": "Bearer test-user"})
         response = client.post(
             "/api/consultations/chat",
             json={
@@ -115,12 +103,14 @@ def test_consultation_chat_conclusion_turn(monkeypatch) -> None:
         "chat_completion",
         fake_chat_completion,
     )
+    monkeypatch.setattr(
+        consultation_service,
+        "load_settings",
+        lambda: make_test_settings(aitunnel_api_key="test-key"),
+    )
 
     with TestClient(app) as client:
-        client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "admin"},
-        )
+        client.headers.update({"Authorization": "Bearer test-user"})
         response = client.post(
             "/api/consultations/chat",
             json={

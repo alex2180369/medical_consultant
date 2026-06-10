@@ -2091,3 +2091,168 @@ label {
     max-width: 92%;
   }
 }
+
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-card-wide {
+  max-width: 720px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.auth-field input {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.auth-password-wrap {
+  position: relative;
+}
+
+.auth-password-wrap input {
+  padding-right: 44px;
+}
+
+.auth-password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  color: #9ca3af;
+  padding: 4px 8px;
+  box-shadow: none;
+}
+
+.auth-password-toggle:hover {
+  transform: translateY(-50%);
+  box-shadow: none;
+}
+
+.auth-hint {
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.auth-consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.auth-consent input {
+  width: auto;
+  margin-top: 4px;
+}
+
+.auth-button {
+  width: 100%;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-weight: 600;
+}
+
+.auth-button-primary {
+  background: #fd366e;
+  color: #fff;
+}
+
+.auth-button-disabled {
+  background: #9ca3af;
+  color: #fff;
+}
+
+.auth-button-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.auth-links,
+.auth-footer-text {
+  margin-top: 20px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.auth-links {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.auth-links button,
+.auth-inline-link,
+.auth-footer-text button {
+  background: transparent;
+  color: #6b7280;
+  padding: 0;
+  box-shadow: none;
+  text-decoration: underline;
+}
+
+.auth-title {
+  text-align: center;
+  font-size: 22px;
+  margin: 0 0 20px;
+  color: #374151;
+}
+
+.auth-error {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.auth-success {
+  color: var(--success);
+  font-size: 14px;
+}
+
+.settings-page .settings-block {
+  margin-bottom: 24px;
+}
+
+.settings-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settings-danger {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.legal-page .legal-content {
+  display: grid;
+  gap: 12px;
+  color: var(--text-secondary);
+}

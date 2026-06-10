@@ -70,11 +70,11 @@ def _extract_json(content: str) -> dict[str, object]:
     raise ValueError("LLM response is not valid JSON.")
 
 
-def _fetch_complaint(complaint_id: int, user_id: int) -> ComplaintRecord:
+def _fetch_complaint(complaint_id: int, user_id: str) -> ComplaintRecord:
     """Load a complaint by id."""
     with get_connection() as connection:
         row = connection.execute(
-            "SELECT * FROM complaints WHERE id = ? AND user_id = ?",
+            "SELECT * FROM complaints WHERE id = %s AND user_id = %s",
             (complaint_id, user_id),
         ).fetchone()
 
@@ -164,7 +164,7 @@ def _serialize_comparison(payload: dict[str, object]) -> str:
 def compare_opinions(
     complaint_id: int,
     doctor_feedback: str,
-    user_id: int,
+    user_id: str,
     settings: Settings | None = None,
 ) -> tuple[ComplaintRecord, OpinionComparisonResult]:
     """Compare assistant and doctor opinions for a saved complaint."""
@@ -185,8 +185,8 @@ def compare_opinions(
         connection.execute(
             """
             UPDATE complaints
-            SET doctor_feedback = ?
-            WHERE id = ? AND user_id = ?
+            SET doctor_feedback = %s
+            WHERE id = %s AND user_id = %s
             """,
             (cleaned_feedback, complaint_id, user_id),
         )
@@ -237,13 +237,13 @@ def compare_opinions(
         connection.execute(
             """
             UPDATE complaints
-            SET ai_opinion_comparison = ?
-            WHERE id = ? AND user_id = ?
+            SET ai_opinion_comparison = %s
+            WHERE id = %s AND user_id = %s
             """,
             (comparison_text, complaint_id, user_id),
         )
         row = connection.execute(
-            "SELECT * FROM complaints WHERE id = ? AND user_id = ?",
+            "SELECT * FROM complaints WHERE id = %s AND user_id = %s",
             (complaint_id, user_id),
         ).fetchone()
 

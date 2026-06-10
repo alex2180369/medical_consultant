@@ -171,7 +171,7 @@ def extract_document_text(
 
 
 def load_recent_documents(
-    user_id: int,
+    user_id: str,
     limit: int = RECENT_DOCUMENTS_LIMIT,
 ) -> list[dict[str, str]]:
     """Load recent documents with extracted text."""
@@ -180,9 +180,9 @@ def load_recent_documents(
             """
             SELECT filename, description, extracted_text, analysis_status, created_at
             FROM documents
-            WHERE user_id = ? AND TRIM(extracted_text) != ''
+            WHERE user_id = %s AND TRIM(extracted_text) != ''
             ORDER BY created_at DESC, id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (user_id, limit),
         ).fetchall()
@@ -191,7 +191,7 @@ def load_recent_documents(
 
 
 def format_documents_for_context(
-    user_id: int,
+    user_id: str,
     documents: list[dict[str, str]] | None = None,
 ) -> str:
     """Format uploaded documents for LLM context."""

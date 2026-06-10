@@ -1,32 +1,18 @@
 """Tests for complaint AI analysis."""
 
 from datetime import date
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.config import Settings
 from app.main import app
 from app.schemas import ComplaintCreate
 from app.services.symptom_analyzer import analyze_complaint
+from tests.test_settings import make_test_settings
 
 
 def test_analyze_complaint_without_api_key() -> None:
     """Analysis should gracefully skip when no API key is configured."""
-    settings = Settings(
-        app_env="test",
-        app_name="test",
-        database_path=Path(":memory:"),
-        aitunnel_api_key=None,
-        proxyapi_api_key=None,
-        symptoms_model="symptoms-model",
-        medications_model="medications-model",
-        complex_symptoms_model="complex-model",
-        review_model="review-model",
-        imaging_model="imaging-model",
-        aitunnel_base_url="https://api.aitunnel.ru/v1",
-        proxyapi_base_url="https://api.proxyapi.ru/v1",
-    )
+    settings = make_test_settings()
     complaint = ComplaintCreate(
         symptoms="Головная боль и слабость",
         doctor_feedback="",
@@ -49,7 +35,7 @@ def test_create_complaint_returns_ai_fields(monkeypatch) -> None:
         settings=None,
         *,
         analysis_mode="standard",
-        user_id=1,
+        user_id="test-user",
     ):
         return symptom_analyzer.SymptomAnalysisResult(
             ai_status="completed",
@@ -66,10 +52,7 @@ def test_create_complaint_returns_ai_fields(monkeypatch) -> None:
     )
 
     with TestClient(app) as client:
-        client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "admin"},
-        )
+        client.headers.update({"Authorization": "Bearer test-user"})
         response = client.post(
             "/api/complaints",
             json={
@@ -98,7 +81,7 @@ def test_review_complaint_endpoint(monkeypatch) -> None:
         settings=None,
         *,
         analysis_mode="standard",
-        user_id=1,
+        user_id="test-user",
     ):
         calls.append(analysis_mode)
         return symptom_analyzer.SymptomAnalysisResult(
@@ -116,10 +99,7 @@ def test_review_complaint_endpoint(monkeypatch) -> None:
     )
 
     with TestClient(app) as client:
-        client.post(
-            "/api/auth/login",
-            json={"username": "admin", "password": "admin"},
-        )
+        client.headers.update({"Authorization": "Bearer test-user"})
         create_response = client.post(
             "/api/complaints",
             json={

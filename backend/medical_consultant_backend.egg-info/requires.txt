@@ -1,5 +1,7 @@
 fastapi
 httpx
+psycopg[binary]
+pypdf
 python-dotenv
 python-multipart
 uvicorn[standard]

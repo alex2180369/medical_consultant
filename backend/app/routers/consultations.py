@@ -26,7 +26,7 @@ def consultation_chat(
     try:
         result = continue_consultation(
             message=payload.message,
-            user_id=auth.effective_user_id,
+            user_id=auth.user_id,
             consultation_id=payload.consultation_id,
             occurred_at=payload.occurred_at,
             doctor_feedback=payload.doctor_feedback,
