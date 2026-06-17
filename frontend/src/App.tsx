@@ -29,7 +29,8 @@ import {
   PrivacyPolicyContent
 } from "./components/LegalPage";
 import { SettingsPage } from "./components/SettingsPage";
-import { getCurrentUser, logoutFromAppwrite } from "./lib/appwrite";
+import { logout } from "./api";
+import { clearAccessToken, getAccessToken } from "./lib/auth";
 import {
   formatAssistantReply,
   OpinionComparisonView
@@ -229,11 +230,17 @@ function App() {
   async function bootstrapSession() {
     setAuthLoading(true);
     try {
-      await getCurrentUser();
+      if (!getAccessToken()) {
+        setSession(null);
+        setStatus("");
+        return;
+      }
+
       const currentSession = await getSession();
       setSession(currentSession);
       setStatus("");
     } catch {
+      clearAccessToken();
       setSession(null);
     } finally {
       setAuthLoading(false);
@@ -255,7 +262,7 @@ function App() {
   }, [session]);
 
   async function handleLogout() {
-    await logoutFromAppwrite();
+    logout();
     setSession(null);
     resetComplaintChat();
     setAuthView("login");

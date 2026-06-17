@@ -1,7 +1,6 @@
 import { FormEvent, useState } from "react";
 
-import { deleteAccount } from "../api";
-import { logoutFromAppwrite } from "../lib/appwrite";
+import { deleteAccount, logout } from "../api";
 
 type SettingsPageProps = {
   email: string;
@@ -40,7 +39,7 @@ export function SettingsPage({
 
     try {
       await deleteAccount();
-      await logoutFromAppwrite();
+      logout();
       onDeleted();
     } catch (deleteError) {
       setError(
@@ -92,8 +91,7 @@ export function SettingsPage({
       <form className="settings-block settings-danger" onSubmit={handleDelete}>
         <h3>Удаление аккаунта</h3>
         <p className="muted">
-          Все ваши данные будут безвозвратно удалены из базы данных и аккаунт
-          Appwrite будет удалён.
+          Все ваши данные будут безвозвратно удалены из базы данных.
         </p>
         <label className="auth-consent">
           <input

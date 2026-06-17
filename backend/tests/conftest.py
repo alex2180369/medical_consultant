@@ -5,7 +5,7 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ.setdefault("APP_ENV", "test")
+os.environ["APP_ENV"] = "test"
 os.environ.setdefault(
     "DATABASE_URL",
     os.environ.get(
@@ -13,7 +13,7 @@ os.environ.setdefault(
         "postgresql://medical:medical@localhost:5432/medical_consultant_test",
     ),
 )
-os.environ.setdefault("APPWRITE_PROJECT_ID", "test-project")
+os.environ.setdefault("JWT_SECRET", "test-secret")
 
 from app.database import initialize_database
 from app.main import app

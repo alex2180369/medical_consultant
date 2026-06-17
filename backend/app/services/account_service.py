@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import httpx
-
 from app.config import load_settings
 from app.database import get_connection
+from app.services.user_service import delete_user
 
 
 def delete_user_files(user_id: str) -> None:
@@ -37,21 +36,4 @@ def hard_delete_user_data(user_id: str) -> None:
             (user_id,),
         )
 
-
-def delete_appwrite_user(user_id: str) -> None:
-    """Delete the Appwrite account using the server API key."""
-    settings = load_settings()
-    if not settings.appwrite_api_key:
-        raise RuntimeError("APPWRITE_API_KEY is not configured.")
-
-    response = httpx.delete(
-        f"{settings.appwrite_endpoint.rstrip('/')}/users/{user_id}",
-        headers={
-            "X-Appwrite-Project": settings.appwrite_project_id,
-            "X-Appwrite-Key": settings.appwrite_api_key,
-            "Content-Type": "application/json",
-        },
-        timeout=15,
-    )
-    if response.status_code not in {200, 204, 404}:
-        response.raise_for_status()
+    delete_user(user_id)

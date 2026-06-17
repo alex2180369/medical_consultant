@@ -40,9 +40,6 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_APPWRITE_ENDPOINT: ${VITE_APPWRITE_ENDPOINT}
-        VITE_APPWRITE_PROJECT_ID: ${VITE_APPWRITE_PROJECT_ID}
     container_name: medical_consultant_frontend
     restart: unless-stopped
     depends_on:

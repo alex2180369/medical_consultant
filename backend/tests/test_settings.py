@@ -19,9 +19,16 @@ def make_test_settings(**overrides: object) -> Settings:
         "imaging_model": "imaging-model",
         "aitunnel_base_url": "https://api.aitunnel.ru/v1",
         "proxyapi_base_url": "https://api.proxyapi.ru/v1",
-        "appwrite_endpoint": "https://cloud.appwrite.io/v1",
-        "appwrite_project_id": "test-project",
-        "appwrite_api_key": None,
+        "jwt_secret": "test-secret",
+        "jwt_algorithm": "HS256",
+        "jwt_expire_minutes": 60,
+        "frontend_url": "https://example.test",
+        "smtp_host": None,
+        "smtp_port": 587,
+        "smtp_username": None,
+        "smtp_password": None,
+        "smtp_from_email": None,
+        "smtp_use_tls": True,
     }
     defaults.update(overrides)
     return Settings(**defaults)

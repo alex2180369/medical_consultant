@@ -1,6 +1,60 @@
-"""Tests for Appwrite-backed authentication."""
+"""Tests for email/password authentication."""
+
+import uuid
 
 from fastapi.testclient import TestClient
+
+
+def test_register_and_login(client: TestClient) -> None:
+    """User can register and then log in."""
+    email = f"auth-test-{uuid.uuid4().hex[:8]}@example.com"
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "name": "Auth Test",
+            "email": email,
+            "password": "Secret123!",
+            "consent": True,
+        },
+    )
+    assert register_response.status_code == 201
+    register_payload = register_response.json()
+    assert register_payload["user"]["email"] == email
+    assert register_payload["access_token"]
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "email": email,
+            "password": "Secret123!",
+        },
+    )
+    assert login_response.status_code == 200
+    assert login_response.json()["access_token"]
+
+
+def test_login_with_wrong_password(client: TestClient) -> None:
+    """Invalid credentials should be rejected."""
+    email = f"wrong-pass-{uuid.uuid4().hex[:8]}@example.com"
+    client.post(
+        "/api/auth/register",
+        json={
+            "name": "Wrong Pass",
+            "email": email,
+            "password": "Secret123!",
+            "consent": True,
+        },
+    )
+
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "email": email,
+            "password": "bad-password",
+        },
+    )
+
+    assert response.status_code == 401
 
 
 def test_session_with_bearer_token(auth_client: TestClient) -> None:

@@ -24,9 +24,16 @@ class Settings:
     imaging_model: str
     aitunnel_base_url: str
     proxyapi_base_url: str
-    appwrite_endpoint: str
-    appwrite_project_id: str
-    appwrite_api_key: str | None
+    jwt_secret: str
+    jwt_algorithm: str
+    jwt_expire_minutes: int
+    frontend_url: str
+    smtp_host: str | None
+    smtp_port: int
+    smtp_username: str | None
+    smtp_password: str | None
+    smtp_from_email: str | None
+    smtp_use_tls: bool
     nutrition_model: str = "claude-sonnet-4.6"
 
 
@@ -60,9 +67,20 @@ def load_settings() -> Settings:
         proxyapi_base_url=environ.get(
             "PROXYAPI_BASE_URL", "https://api.proxyapi.ru/openai/v1"
         ),
-        appwrite_endpoint=environ.get(
-            "APPWRITE_ENDPOINT", "https://cloud.appwrite.io/v1"
+        jwt_secret=environ.get("JWT_SECRET", "dev-insecure-change-me"),
+        jwt_algorithm=environ.get("JWT_ALGORITHM", "HS256"),
+        jwt_expire_minutes=int(environ.get("JWT_EXPIRE_MINUTES", "10080")),
+        frontend_url=environ.get(
+            "FRONTEND_URL", "https://помощники-консультанты.рф"
         ),
-        appwrite_project_id=environ.get("APPWRITE_PROJECT_ID", ""),
-        appwrite_api_key=environ.get("APPWRITE_API_KEY"),
+        smtp_host=environ.get("SMTP_HOST"),
+        smtp_port=int(environ.get("SMTP_PORT", "587")),
+        smtp_username=environ.get("SMTP_USERNAME"),
+        smtp_password=environ.get("SMTP_PASSWORD"),
+        smtp_from_email=environ.get("SMTP_FROM_EMAIL"),
+        smtp_use_tls=environ.get("SMTP_USE_TLS", "true").lower() in {
+            "1",
+            "true",
+            "yes",
+        },
     )

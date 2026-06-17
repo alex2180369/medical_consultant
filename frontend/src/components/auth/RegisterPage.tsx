@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 
-import { registerWithEmail } from "../../lib/appwrite";
+import { register } from "../../api";
 import { AuthLayout } from "./AuthLayout";
 
 type RegisterPageProps = {
@@ -35,7 +35,7 @@ export function RegisterPage({
     setIsSubmitting(true);
 
     try {
-      await registerWithEmail(name.trim(), email.trim(), password);
+      await register(name.trim(), email.trim(), password, consent);
       onSuccess();
     } catch (submitError) {
       setError(

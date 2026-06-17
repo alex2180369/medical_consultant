@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 
-import { loginWithEmail } from "../../lib/appwrite";
+import { login } from "../../api";
 import { AuthLayout } from "./AuthLayout";
 
 type LoginPageProps = {
@@ -26,7 +26,7 @@ export function LoginPage({
     setIsSubmitting(true);
 
     try {
-      await loginWithEmail(email.trim(), password);
+      await login(email.trim(), password);
       onSuccess();
     } catch (submitError) {
       setError(

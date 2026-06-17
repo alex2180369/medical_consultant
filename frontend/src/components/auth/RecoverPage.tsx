@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 
-import { recoverPassword } from "../../lib/appwrite";
+import { forgotPassword } from "../../api";
 import { AuthLayout } from "./AuthLayout";
 
 type RecoverPageProps = {
@@ -21,7 +21,7 @@ export function RecoverPage({ onLogin, onRegister }: RecoverPageProps) {
     setIsSubmitting(true);
 
     try {
-      await recoverPassword(email.trim());
+      await forgotPassword(email.trim());
       setMessage("Письмо для восстановления пароля отправлено на вашу почту.");
     } catch (submitError) {
       setError(

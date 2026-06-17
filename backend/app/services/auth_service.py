@@ -1,15 +1,19 @@
-"""Appwrite JWT authentication helpers."""
+"""JWT authentication helpers."""
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-import httpx
+import bcrypt
+import jwt
 from fastapi import Depends, Header, HTTPException, status
 
 from app.config import load_settings
 from app.database import ensure_user_profile
+from app.services.user_service import get_user_by_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,38 +25,58 @@ class AuthContext:
     name: str
 
 
-def _verify_appwrite_jwt(jwt: str) -> dict[str, str]:
-    """Validate an Appwrite JWT and return the account payload."""
-    settings = load_settings()
-    if not settings.appwrite_project_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Appwrite не настроен на сервере.",
-        )
+def hash_password(password: str) -> str:
+    """Return a bcrypt hash for a plaintext password."""
+    return bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt(),
+    ).decode("utf-8")
 
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Check whether a plaintext password matches the stored hash."""
     try:
-        response = httpx.get(
-            f"{settings.appwrite_endpoint.rstrip('/')}/account",
-            headers={
-                "X-Appwrite-Project": settings.appwrite_project_id,
-                "X-Appwrite-JWT": jwt,
-            },
-            timeout=15,
+        return bcrypt.checkpw(
+            password.encode("utf-8"),
+            password_hash.encode("utf-8"),
         )
-    except httpx.HTTPError as error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Не удалось проверить сессию Appwrite.",
-        ) from error
+    except ValueError:
+        return False
 
-    if response.status_code != 200:
+
+def create_access_token(*, user_id: str, email: str, name: str) -> str:
+    """Issue a signed JWT for an authenticated user."""
+    settings = load_settings()
+    expires_at = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "name": name,
+        "exp": expires_at,
+    }
+    return jwt.encode(
+        payload,
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_access_token(token: str) -> dict[str, str]:
+    """Validate a JWT and return its claims."""
+    settings = load_settings()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+    except jwt.PyJWTError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Сессия недействительна. Войдите снова.",
-        )
+        ) from error
 
-    payload = response.json()
-    user_id = str(payload.get("$id", "")).strip()
+    user_id = str(payload.get("sub", "")).strip()
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -66,15 +90,24 @@ def _verify_appwrite_jwt(jwt: str) -> dict[str, str]:
     }
 
 
+def generate_reset_token() -> str:
+    """Create a URL-safe password reset token."""
+    return secrets.token_urlsafe(32)
+
+
 def get_auth_context(
     authorization: Annotated[str | None, Header()] = None,
 ) -> AuthContext:
-    """Resolve the authenticated Appwrite user from a Bearer JWT."""
+    """Resolve the authenticated user from a Bearer JWT."""
     settings = load_settings()
 
     if settings.app_env == "test":
         if authorization == "Bearer test-user":
-            ensure_user_profile("test-user", email="test@example.com", display_name="Test")
+            ensure_user_profile(
+                "test-user",
+                email="test@example.com",
+                display_name="Test",
+            )
             return AuthContext(
                 user_id="test-user",
                 email="test@example.com",
@@ -87,22 +120,35 @@ def get_auth_context(
             detail="Требуется вход в систему.",
         )
 
-    jwt = authorization.removeprefix("Bearer ").strip()
-    if not jwt:
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Требуется вход в систему.",
         )
 
-    account = _verify_appwrite_jwt(jwt)
-    ensure_user_profile(
-        account["user_id"],
-        email=account["email"],
-        display_name=account["name"],
-    )
+    if settings.app_env == "test" and token == "test-user":
+        ensure_user_profile(
+            "test-user",
+            email="test@example.com",
+            display_name="Test",
+        )
+        return AuthContext(
+            user_id="test-user",
+            email="test@example.com",
+            name="Test User",
+        )
+
+    claims = decode_access_token(token)
+    user = get_user_by_id(claims["user_id"])
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Сессия недействительна. Войдите снова.",
+        )
 
     return AuthContext(
-        user_id=account["user_id"],
-        email=account["email"],
-        name=account["name"],
+        user_id=user["id"],
+        email=user["email"],
+        name=user["display_name"],
     )

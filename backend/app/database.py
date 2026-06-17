@@ -32,6 +32,23 @@ def initialize_database() -> None:
     with get_connection() as connection:
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                display_name TEXT NOT NULL DEFAULT '',
+                consent_accepted_at TIMESTAMPTZ,
+                password_reset_token TEXT,
+                password_reset_expires_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS password_reset_rate_limits (
+                email TEXT PRIMARY KEY,
+                last_requested_at TIMESTAMPTZ NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id TEXT PRIMARY KEY,
                 email TEXT NOT NULL DEFAULT '',
@@ -122,6 +139,8 @@ def initialize_database() -> None:
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
+            CREATE INDEX IF NOT EXISTS idx_users_email
+                ON users(lower(email));
             CREATE INDEX IF NOT EXISTS idx_lab_results_user_id
                 ON lab_results(user_id);
             CREATE INDEX IF NOT EXISTS idx_documents_user_id
@@ -139,20 +158,31 @@ def ensure_user_profile(
     *,
     email: str = "",
     display_name: str = "",
+    consent_accepted_at=None,
 ) -> None:
-    """Create an empty profile row for a new Appwrite user."""
+    """Create or update a profile row for a registered user."""
     with get_connection() as connection:
         connection.execute(
             """
-            INSERT INTO profiles (user_id, email, display_name, full_name)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO profiles (
+                user_id,
+                email,
+                display_name,
+                full_name,
+                consent_accepted_at
+            )
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (user_id) DO UPDATE SET
                 email = EXCLUDED.email,
                 display_name = CASE
                     WHEN profiles.display_name = '' THEN EXCLUDED.display_name
                     ELSE profiles.display_name
                 END,
+                consent_accepted_at = COALESCE(
+                    profiles.consent_accepted_at,
+                    EXCLUDED.consent_accepted_at
+                ),
                 updated_at = NOW()
             """,
-            (user_id, email, display_name, display_name),
+            (user_id, email, display_name, display_name, consent_accepted_at),
         )

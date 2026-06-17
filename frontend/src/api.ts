@@ -1,4 +1,4 @@
-import { getAuthJwt } from "./lib/appwrite";
+import { getAccessToken, setAccessToken, clearAccessToken } from "./lib/auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -9,6 +9,12 @@ export type UserPublic = {
 };
 
 export type SessionInfo = {
+  user: UserPublic;
+};
+
+export type AuthResponse = {
+  access_token: string;
+  token_type: string;
   user: UserPublic;
 };
 
@@ -112,9 +118,9 @@ async function buildHeaders(options?: RequestInit): Promise<Headers> {
     headers.set("Content-Type", "application/json");
   }
 
-  const jwt = await getAuthJwt();
-  if (jwt) {
-    headers.set("Authorization", `Bearer ${jwt}`);
+  const token = getAccessToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   return headers;
@@ -166,6 +172,50 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export function getSession(): Promise<SessionInfo> {
   return request<SessionInfo>("/api/auth/me");
+}
+
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  const response = await request<AuthResponse>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  });
+  setAccessToken(response.access_token);
+  return response;
+}
+
+export async function register(
+  name: string,
+  email: string,
+  password: string,
+  consent: boolean
+): Promise<AuthResponse> {
+  const response = await request<AuthResponse>("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ name, email, password, consent })
+  });
+  setAccessToken(response.access_token);
+  return response;
+}
+
+export function forgotPassword(email: string): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email })
+  });
+}
+
+export function resetPassword(
+  token: string,
+  password: string
+): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password })
+  });
+}
+
+export function logout(): void {
+  clearAccessToken();
 }
 
 export function deleteAccount(): Promise<void> {
