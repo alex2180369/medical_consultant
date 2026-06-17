@@ -2256,3 +2256,11 @@ label {
   gap: 12px;
   color: var(--text-secondary);
 }
+
+.legal-pdf-viewer {
+  width: 100%;
+  min-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}

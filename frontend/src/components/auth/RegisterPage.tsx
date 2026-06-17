@@ -108,7 +108,11 @@ export function RegisterPage({
           <span>
             Я даю согласие на обработку моих персональных данных, включая
             сведения о здоровье, в соответствии с{" "}
-            <button type="button" className="auth-inline-link" onClick={onPrivacy}>
+            <button
+              type="button"
+              className="auth-inline-link"
+              onClick={onPrivacy}
+            >
               Политикой конфиденциальности
             </button>
             .

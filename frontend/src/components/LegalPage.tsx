@@ -1,5 +1,7 @@
 import { ReactNode } from "react";
 
+const PRIVACY_POLICY_PDF_URL = "/privacy-policy.pdf";
+
 type LegalPageProps = {
   title: string;
   children: ReactNode;
@@ -20,19 +22,11 @@ export function LegalPage({ title, children, onBack }: LegalPageProps) {
 
 export function PrivacyPolicyContent() {
   return (
-    <>
-      <p>
-        Это заглушка Политики конфиденциальности. Здесь будет описано, какие
-        персональные данные и сведения о здоровье обрабатываются сервисом,
-        на каких основаниях, как долго хранятся и как вы можете отозвать
-        согласие или удалить аккаунт.
-      </p>
-      <p>
-        Регистрация в приложении возможна только после явного согласия
-        пользователя на обработку персональных данных, включая медицинские
-        сведения, в соответствии с ФЗ-152.
-      </p>
-    </>
+    <iframe
+      className="legal-pdf-viewer"
+      src={PRIVACY_POLICY_PDF_URL}
+      title="Политика конфиденциальности"
+    />
   );
 }
 
