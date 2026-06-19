@@ -28,6 +28,45 @@ class SessionInfo(BaseModel):
     user: UserPublic
 
 
+class RegisterResponse(BaseModel):
+    """Registration application accepted for moderation."""
+
+    message: str
+
+
+class RejectUserRequest(BaseModel):
+    """Reject a pending registration application."""
+
+    reason: str = ""
+
+
+class AdminUserRecord(BaseModel):
+    """User record visible in the admin panel."""
+
+    id: str
+    email: str
+    name: str
+    status: str
+    role: str
+    ai_suggested_name: str = ""
+    ai_email_analysis: str = ""
+    ai_confidence: str = ""
+    ai_analyzed_at: datetime | None = None
+    approved_at: datetime | None = None
+    rejected_at: datetime | None = None
+    rejection_reason: str = ""
+    created_at: datetime | None = None
+
+
+class BlockedEmailRecord(BaseModel):
+    """Permanently blocked email address."""
+
+    email: str
+    reason: str
+    blocked_at: datetime
+    blocked_by: str = ""
+
+
 class AuthResponse(BaseModel):
     """Successful login or registration response."""
 

@@ -90,6 +90,42 @@ def decode_access_token(token: str) -> dict[str, str]:
     }
 
 
+STATUS_MESSAGES = {
+    "pending": "Заявка на рассмотрении. Ожидайте подтверждения администратора.",
+    "rejected": "Заявка на регистрацию отклонена.",
+}
+
+
+def ensure_user_is_approved(user: dict[str, object]) -> None:
+    """Reject access for users that are not approved yet."""
+    user_status = str(user.get("status") or "approved")
+    if user_status == "approved":
+        return
+
+    detail = STATUS_MESSAGES.get(user_status, "Доступ запрещён.")
+    if user_status == "rejected":
+        reason = str(user.get("rejection_reason") or "").strip()
+        if reason:
+            detail = f"{detail} Причина: {reason}"
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=detail,
+    )
+
+
+def require_admin(auth: AuthContext) -> AuthContext:
+    """Allow access only for the configured administrator."""
+    settings = load_settings()
+    admin_email = (settings.admin_email or "").strip().lower()
+    if not admin_email or auth.email.lower() != admin_email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещён.",
+        )
+    return auth
+
+
 def generate_reset_token() -> str:
     """Create a URL-safe password reset token."""
     return secrets.token_urlsafe(32)
@@ -146,6 +182,8 @@ def get_auth_context(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Сессия недействительна. Войдите снова.",
         )
+
+    ensure_user_is_approved(user)
 
     return AuthContext(
         user_id=user["id"],

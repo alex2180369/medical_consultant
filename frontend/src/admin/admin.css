@@ -1,0 +1,142 @@
+.admin-shell {
+  min-height: 100vh;
+  background: #f3f6f8;
+  color: #1f2937;
+  padding: 24px;
+}
+
+.admin-panel,
+.admin-header,
+.admin-card {
+  background: #fff;
+  border: 1px solid #dbe3ea;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.admin-login-panel {
+  max-width: 420px;
+  margin: 10vh auto 0;
+  padding: 28px;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+
+.admin-header h1,
+.admin-login-panel h1 {
+  margin: 0 0 8px;
+}
+
+.admin-header p,
+.admin-login-panel p,
+.admin-muted {
+  margin: 0;
+  color: #6b7280;
+}
+
+.admin-header-actions,
+.admin-actions,
+.admin-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-tabs {
+  margin-bottom: 16px;
+}
+
+.admin-tabs button,
+.admin-header-actions button,
+.admin-actions button,
+.admin-form button {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #1f2937;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.admin-tabs button.is-active,
+.admin-form button,
+.admin-actions button:first-child {
+  background: #0f6e82;
+  border-color: #0f6e82;
+  color: #fff;
+}
+
+.admin-button-danger,
+.admin-actions .admin-button-danger {
+  background: #b42318;
+  border-color: #b42318;
+  color: #fff;
+}
+
+.admin-form,
+.admin-card {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-form {
+  margin-top: 20px;
+}
+
+.admin-form label,
+.admin-card label {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-form input,
+.admin-card input {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.admin-list {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-card {
+  padding: 18px;
+}
+
+.admin-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-card header span {
+  color: #6b7280;
+}
+
+.admin-analysis {
+  white-space: pre-wrap;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.admin-error {
+  color: #b42318;
+}
+
+.admin-error-banner {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  border-radius: 10px;
+}

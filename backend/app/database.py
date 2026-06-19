@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from os import environ
 
 import psycopg
 from psycopg.rows import dict_row
@@ -149,7 +150,56 @@ def initialize_database() -> None:
                 ON complaints(user_id);
             CREATE INDEX IF NOT EXISTS idx_consultations_user_id
                 ON consultations(user_id);
+
+            CREATE TABLE IF NOT EXISTS blocked_emails (
+                email TEXT PRIMARY KEY,
+                reason TEXT NOT NULL,
+                blocked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                blocked_by TEXT NOT NULL DEFAULT ''
+            );
             """
+        )
+        _run_migrations(connection)
+
+
+def _run_migrations(connection: psycopg.Connection) -> None:
+    """Apply incremental schema changes for user moderation."""
+    connection.execute(
+        """
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_suggested_name TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_email_analysis TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_confidence TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_analyzed_at TIMESTAMPTZ;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_by TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS rejected_by TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_reason TEXT NOT NULL DEFAULT '';
+        """
+    )
+
+    connection.execute(
+        """
+        UPDATE users
+        SET status = 'approved'
+        WHERE status = 'pending'
+          AND approved_at IS NULL
+          AND rejected_at IS NULL
+          AND created_at < NOW() - INTERVAL '1 minute'
+        """
+    )
+
+    admin_email = environ.get("ADMIN_EMAIL", "").strip().lower()
+    if admin_email:
+        connection.execute(
+            """
+            UPDATE users
+            SET role = 'admin', status = 'approved'
+            WHERE lower(email) = %s
+            """,
+            (admin_email,),
         )
 
 

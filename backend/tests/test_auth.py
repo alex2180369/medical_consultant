@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 
 def test_register_and_login(client: TestClient) -> None:
-    """User can register and then log in."""
+    """User can register and then log in after approval."""
     email = f"auth-test-{uuid.uuid4().hex[:8]}@example.com"
     register_response = client.post(
         "/api/auth/register",
@@ -19,8 +19,8 @@ def test_register_and_login(client: TestClient) -> None:
     )
     assert register_response.status_code == 201
     register_payload = register_response.json()
-    assert register_payload["user"]["email"] == email
-    assert register_payload["access_token"]
+    assert "message" in register_payload
+    assert "access_token" not in register_payload
 
     login_response = client.post(
         "/api/auth/login",

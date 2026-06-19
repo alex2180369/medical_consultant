@@ -59,3 +59,32 @@ def send_password_reset_email(*, recipient: str, reset_url: str) -> None:
         if login_user and settings.smtp_password:
             smtp.login(login_user, settings.smtp_password)
         smtp.send_message(message)
+
+
+def send_admin_notification_email(
+    *,
+    recipient: str,
+    subject: str,
+    body: str,
+) -> None:
+    """Send an administrative notification email."""
+    settings = load_settings()
+    if not smtp_configured():
+        raise RuntimeError("SMTP is not configured.")
+
+    from_email = settings.smtp_from_email or ""
+    from_ascii = _to_ascii_email(from_email)
+    login_user = _to_ascii_email(settings.smtp_username or from_email)
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr(("Медицинский консультант", from_ascii))
+    message["To"] = recipient
+    message.set_content(body)
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
+        if settings.smtp_use_tls:
+            smtp.starttls()
+        if login_user and settings.smtp_password:
+            smtp.login(login_user, settings.smtp_password)
+        smtp.send_message(message)

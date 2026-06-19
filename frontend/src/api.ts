@@ -18,6 +18,10 @@ export type AuthResponse = {
   user: UserPublic;
 };
 
+export type RegisterResponse = {
+  message: string;
+};
+
 export type MedicalProfile = {
   full_name: string;
   age: number | null;
@@ -188,13 +192,11 @@ export async function register(
   email: string,
   password: string,
   consent: boolean
-): Promise<AuthResponse> {
-  const response = await request<AuthResponse>("/api/auth/register", {
+): Promise<RegisterResponse> {
+  return request<RegisterResponse>("/api/auth/register", {
     method: "POST",
     body: JSON.stringify({ name, email, password, consent })
   });
-  setAccessToken(response.access_token);
-  return response;
 }
 
 export function forgotPassword(email: string): Promise<{ message: string }> {

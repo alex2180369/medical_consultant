@@ -1,4 +1,4 @@
-import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 import {
   ComplaintCreate,
@@ -20,6 +20,7 @@ import {
   uploadDocument
 } from "./api";
 import { LoginPage } from "./components/auth/LoginPage";
+import { PendingApprovalPage } from "./components/auth/PendingApprovalPage";
 import { RecoverPage } from "./components/auth/RecoverPage";
 import { RegisterPage } from "./components/auth/RegisterPage";
 import {
@@ -130,7 +131,7 @@ type AppPage =
   | "about"
   | "legal";
 
-type AuthView = "login" | "register" | "recover";
+type AuthView = "login" | "register" | "recover" | "pending";
 
 const CHAT_WELCOME =
   "Здравствуйте! Расскажите о симптомах — я соберу анамнез и сформирую " +
@@ -174,6 +175,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authView, setAuthView] = useState<AuthView>("login");
   const [authLegalPage, setAuthLegalPage] = useState<"privacy" | null>(null);
+  const [pendingMessage, setPendingMessage] = useState("");
 
   const [activePage, setActivePage] = useState<AppPage>("dashboard");
   const [isChatHistoryCollapsed, setIsChatHistoryCollapsed] = useState(false);
@@ -458,10 +460,41 @@ function App() {
     }
   }
 
-  function handleDocumentDrop(event: DragEvent<HTMLLabelElement>) {
+  function handleDocumentDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsDraggingDocument(false);
-    setDocumentFile(event.dataTransfer.files.item(0));
+    const file = event.dataTransfer.files.item(0);
+    if (file) {
+      setDocumentFile(file);
+    }
+  }
+
+  function handleDocumentInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setDocumentFile(file);
+  }
+
+  function renderDocumentUploadInstructions() {
+    return (
+      <div className="upload-pending-instructions">
+        <p className="upload-pending-title">
+          Файл выбран: <strong>{documentFile?.name}</strong>
+        </p>
+        <p>Для продолжения загрузки необходимо:</p>
+        <ul>
+          <li>заполнить таблицу ниже;</li>
+          <li>добавить описание файла;</li>
+          <li>нажать кнопку «Загрузить файл».</li>
+        </ul>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => documentInputRef.current?.click()}
+        >
+          Выбрать другой файл
+        </button>
+      </div>
+    );
   }
 
   function addLifestyleSuggestion(suggestion: string) {
@@ -621,34 +654,33 @@ function App() {
           Ассистент не заменяет очного врача. Загруженные файлы и показатели
           используются только для информационной поддержки.
         </p>
-        <label
-          className={`upload-zone ${isDraggingDocument ? "is-dragging" : ""}`}
+        <div
+          className={`upload-zone ${documentFile ? "upload-zone-selected" : ""} ${isDraggingDocument ? "is-dragging" : ""}`}
           onDragOver={(event) => {
             event.preventDefault();
             setIsDraggingDocument(true);
           }}
           onDragLeave={() => setIsDraggingDocument(false)}
           onDrop={handleDocumentDrop}
-          onClick={() => documentInputRef.current?.click()}
         >
-          <div className="upload-icon">📤</div>
-          <h3>Перетащите файлы или нажмите для выбора</h3>
-          <p>JPG, PNG, PDF, TXT — анализы, рентген, заключения</p>
+          {documentFile ? (
+            renderDocumentUploadInstructions()
+          ) : (
+            <label className="upload-zone-label" htmlFor="document-file-input">
+              <div className="upload-icon">📤</div>
+              <h3>Перетащите файлы или нажмите для выбора</h3>
+              <p>JPG, PNG, PDF, TXT — анализы, рентген, заключения</p>
+            </label>
+          )}
           <input
+            id="document-file-input"
             ref={documentInputRef}
             type="file"
             accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
             hidden
-            onChange={(event) =>
-              setDocumentFile(event.target.files?.[0] ?? null)
-            }
+            onChange={handleDocumentInputChange}
           />
-        </label>
-        {documentFile && (
-          <p className="muted">
-            Выбран: {documentFile.name}. Укажите описание и нажмите «Загрузить».
-          </p>
-        )}
+        </div>
         <p className="muted">
           Или внесите показатель вручную в таблицу ниже.
         </p>
@@ -735,8 +767,18 @@ function App() {
             />
           </label>
           <button type="submit">Загрузить файл</button>
-          {documents.length > 0 && (
+          {(documentFile || documents.length > 0) && (
             <div className="lab-list">
+              {documentFile && (
+                <article className="lab-item lab-item-pending">
+                  <strong>{documentFile.name}</strong>
+                  <span>Ожидает загрузки</span>
+                  <small>
+                    Для продолжения загрузки необходимо: заполнить таблицу ниже,
+                    добавить описание файла и нажать кнопку «Загрузить файл».
+                  </small>
+                </article>
+              )}
               {documents.slice(0, 8).map((item) => (
                 <article key={item.id} className="lab-item">
                   <strong>{item.filename}</strong>
@@ -1532,9 +1574,21 @@ function App() {
     if (authView === "register") {
       return (
         <RegisterPage
-          onSuccess={() => void bootstrapSession()}
+          onSuccess={(message) => {
+            setPendingMessage(message);
+            setAuthView("pending");
+          }}
           onLogin={() => setAuthView("login")}
           onPrivacy={() => setAuthLegalPage("privacy")}
+        />
+      );
+    }
+
+    if (authView === "pending") {
+      return (
+        <PendingApprovalPage
+          message={pendingMessage}
+          onLogin={() => setAuthView("login")}
         />
       );
     }

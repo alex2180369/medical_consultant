@@ -10,6 +10,7 @@ from app.config import load_settings
 from app.database import initialize_database
 from app.routers import (
     account,
+    admin,
     auth,
     complaints,
     consultations,
@@ -54,6 +55,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 app.include_router(account.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
 app.include_router(labs.router, prefix="/api")

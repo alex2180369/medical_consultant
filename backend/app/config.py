@@ -34,6 +34,10 @@ class Settings:
     smtp_password: str | None
     smtp_from_email: str | None
     smtp_use_tls: bool
+    admin_email: str | None
+    ops_notify_url: str | None
+    ops_token: str | None
+    admin_enrichment_model: str
     nutrition_model: str = "claude-sonnet-4.6"
 
 
@@ -83,4 +87,10 @@ def load_settings() -> Settings:
             "true",
             "yes",
         },
+        admin_email=environ.get("ADMIN_EMAIL"),
+        ops_notify_url=environ.get("OPS_NOTIFY_URL"),
+        ops_token=environ.get("OPS_TOKEN"),
+        admin_enrichment_model=environ.get(
+            "ADMIN_ENRICHMENT_MODEL", "gpt-4o-mini"
+        ),
     )

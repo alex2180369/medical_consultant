@@ -4,7 +4,7 @@ import { register } from "../../api";
 import { AuthLayout } from "./AuthLayout";
 
 type RegisterPageProps = {
-  onSuccess: () => void;
+  onSuccess: (message: string) => void;
   onLogin: () => void;
   onPrivacy: () => void;
 };
@@ -35,8 +35,8 @@ export function RegisterPage({
     setIsSubmitting(true);
 
     try {
-      await register(name.trim(), email.trim(), password, consent);
-      onSuccess();
+      const response = await register(name.trim(), email.trim(), password, consent);
+      onSuccess(response.message);
     } catch (submitError) {
       setError(
         submitError instanceof Error

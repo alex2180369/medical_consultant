@@ -15,6 +15,7 @@ class LlmTask(StrEnum):
     REVIEW = "review"
     IMAGING = "imaging"
     NUTRITION = "nutrition"
+    ADMIN_ENRICHMENT = "admin_enrichment"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +52,10 @@ def resolve_model_route(task: LlmTask, settings: Settings) -> ModelRoute:
         LlmTask.NUTRITION: ModelRoute(
             provider="aitunnel.ru",
             model=settings.nutrition_model,
+        ),
+        LlmTask.ADMIN_ENRICHMENT: ModelRoute(
+            provider="proxyapi.ru",
+            model=settings.admin_enrichment_model,
         ),
     }
 

@@ -1373,6 +1373,44 @@ label {
   font-size: 13px;
 }
 
+.upload-zone-label {
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  width: 100%;
+}
+
+.upload-zone-selected {
+  cursor: default;
+}
+
+.upload-zone-selected:hover {
+  background: var(--bg-card);
+  border-color: var(--border);
+}
+
+.upload-pending-instructions {
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+  text-align: left;
+}
+
+.upload-pending-instructions ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.upload-pending-title {
+  margin: 0;
+}
+
+.lab-item-pending {
+  border-color: var(--primary);
+  background: #f0f7fa;
+}
+
 .drop-zone input {
   display: none;
 }
