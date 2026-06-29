@@ -225,6 +225,18 @@ class ConsultationChatRequest(BaseModel):
     force_complex: bool = False
 
 
+class TurnUsageInfo(BaseModel):
+    """Billing details for one consultation turn."""
+
+    credits_charged: int
+    estimated_credits: int
+    tokens_total: int
+    model: str
+    balance_remaining: int
+    free_turns_remaining: int
+    used_free_turn: bool = False
+
+
 class ConsultationChatResponse(BaseModel):
     """Assistant reply for one consultation turn."""
 
@@ -233,6 +245,42 @@ class ConsultationChatResponse(BaseModel):
     phase: Literal["anamnesis", "conclusion"]
     ai_status: str
     complaint: ComplaintRecord | None = None
+    usage: TurnUsageInfo | None = None
+
+
+class WalletResponse(BaseModel):
+    """Current wallet balance for the authenticated user."""
+
+    credits_balance: int
+    free_turns_remaining: int
+    credits_per_rub: int
+    starter_credits: int = 100
+    payment_gateway_status: str = "coming_soon"
+
+
+class WalletTransactionResponse(BaseModel):
+    """Wallet transaction visible to the user."""
+
+    id: int
+    delta_credits: int
+    reason: str
+    reference_id: str | None = None
+    created_at: datetime
+
+
+class AdminTopUpRequest(BaseModel):
+    """Manual wallet top-up by administrator."""
+
+    credits: int = Field(gt=0, le=1_000_000)
+    note: str = Field(default="", max_length=200)
+
+
+class AdminWalletResponse(BaseModel):
+    """Wallet state visible to administrator."""
+
+    user_id: str
+    credits_balance: int
+    free_turns_remaining: int
 
 
 class NutritionPlanRequest(BaseModel):
@@ -248,3 +296,79 @@ class NutritionPlanResponse(BaseModel):
     ai_status: str
     message: str = ""
     menu: list[dict[str, object]] = Field(default_factory=list)
+
+
+class UsageEventResponse(BaseModel):
+    """Single LLM usage event visible to the account owner."""
+
+    id: int
+    operation_type: str
+    llm_task: str | None = None
+    provider: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_credits: int
+    charged_credits: int
+    cache_hit: bool
+    is_charged: bool
+    consultation_id: int | None = None
+    complaint_id: int | None = None
+    document_id: int | None = None
+    created_at: datetime
+
+
+class UsageSummaryResponse(BaseModel):
+    """Aggregated LLM usage for the account."""
+
+    total_events: int
+    total_tokens: int
+    total_estimated_credits: int
+    total_charged_credits: int
+    credits_per_rub: int
+    by_operation: dict[str, int]
+    billing_mode: str = "credits"
+    note: str = (
+        "Списание кредитов активно. При нулевом балансе доступны бесплатные ходы."
+    )
+
+
+class DocumentCostEstimateResponse(BaseModel):
+    """Pre-flight credit estimate for a document upload."""
+
+    estimated_credits: int
+    requires_confirmation: bool
+    is_billable: bool
+    analysis_type: str
+    warning_message: str | None = None
+    page_count: int | None = None
+    file_size_bytes: int
+    model: str | None = None
+
+
+class ReceiptLineResponse(BaseModel):
+    """Aggregated usage line on a consultation receipt."""
+
+    operation_type: str
+    operation_label: str
+    model: str
+    event_count: int
+    total_tokens: int
+    estimated_credits: int
+    charged_credits: int
+
+
+class ConsultationReceiptResponse(BaseModel):
+    """Usage receipt for one consultation session."""
+
+    consultation_id: int
+    occurred_at: date | None = None
+    status: str
+    complaint_id: int | None = None
+    total_tokens: int
+    total_estimated_credits: int
+    total_charged_credits: int
+    free_turns_used: int
+    lines: list[ReceiptLineResponse]
+    generated_at: datetime

@@ -25,6 +25,12 @@ export type BlockedEmailRecord = {
   blocked_by: string;
 };
 
+export type AdminWalletInfo = {
+  user_id: string;
+  credits_balance: number;
+  free_turns_remaining: number;
+};
+
 export type AuthResponse = {
   access_token: string;
   token_type: string;
@@ -118,5 +124,20 @@ export function rejectApplication(
 export function disableUser(userId: string): Promise<{ message: string }> {
   return adminRequest<{ message: string }>(`/api/admin/users/${userId}`, {
     method: "DELETE"
+  });
+}
+
+export function getUserWallet(userId: string): Promise<AdminWalletInfo> {
+  return adminRequest<AdminWalletInfo>(`/api/admin/users/${userId}/wallet`);
+}
+
+export function topUpUserWallet(
+  userId: string,
+  credits: number,
+  note = ""
+): Promise<AdminWalletInfo> {
+  return adminRequest<AdminWalletInfo>(`/api/admin/users/${userId}/wallet/top-up`, {
+    method: "POST",
+    body: JSON.stringify({ credits, note })
   });
 }

@@ -10,8 +10,10 @@ from app.config import Settings, load_settings
 from app.database import get_connection
 from app.schemas import ComplaintCreate, ComplaintRecord, MedicalProfile
 from app.services.document_analyzer import format_documents_for_context
-from app.services.llm_client import ChatMessage, chat_completion
+from app.services.llm_client import ChatMessage, ChatCompletionResult, chat_completion
 from app.services.llm_router import LlmTask, resolve_model_route
+from app.services.usage_service import UsageContext
+from app.services.wallet_service import InsufficientCreditsError
 from app.services.symptom_analyzer import (
     SymptomAnalysisResult,
     _fetch_medication_notes,
@@ -78,6 +80,19 @@ class StoredMessage:
 
 
 @dataclass(frozen=True, slots=True)
+class TurnUsage:
+    """Billing details attached to one consultation turn."""
+
+    credits_charged: int
+    estimated_credits: int
+    tokens_total: int
+    model: str
+    balance_remaining: int
+    free_turns_remaining: int
+    used_free_turn: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class ConsultationTurnResult:
     """Result of one chat turn."""
 
@@ -86,6 +101,38 @@ class ConsultationTurnResult:
     phase: ConsultationPhase
     ai_status: str
     complaint: ComplaintRecord | None = None
+    usage: TurnUsage | None = None
+
+
+def _billing_from_completion(
+    current: TurnUsage | None,
+    completion: ChatCompletionResult,
+) -> TurnUsage | None:
+    """Merge billing data from one LLM completion into a turn summary."""
+    billing = completion.billing
+    if billing is None:
+        return current
+
+    if current is None:
+        return TurnUsage(
+            credits_charged=billing.charged_credits,
+            estimated_credits=billing.estimated_credits,
+            tokens_total=billing.total_tokens,
+            model=completion.model,
+            balance_remaining=billing.balance_remaining,
+            free_turns_remaining=billing.free_turns_remaining,
+            used_free_turn=billing.used_free_turn,
+        )
+
+    return TurnUsage(
+        credits_charged=current.credits_charged + billing.charged_credits,
+        estimated_credits=current.estimated_credits + billing.estimated_credits,
+        tokens_total=current.tokens_total + billing.total_tokens,
+        model=completion.model,
+        balance_remaining=billing.balance_remaining,
+        free_turns_remaining=billing.free_turns_remaining,
+        used_free_turn=current.used_free_turn or billing.used_free_turn,
+    )
 
 
 def _extract_json(content: str) -> dict[str, object]:
@@ -450,8 +497,17 @@ def continue_consultation(
             task,
             messages=llm_messages,
             timeout=timeout,
+            usage_context=UsageContext(
+                user_id=user_id,
+                operation_type="chat_turn",
+                consultation_id=consultation_id,
+                task=task,
+            ),
         )
         payload = _extract_json(completion.content)
+        turn_usage = _billing_from_completion(None, completion)
+    except InsufficientCreditsError as error:
+        raise ValueError(error.message) from error
     except Exception as error:
         reply = (
             f"Не удалось получить ответ от модели ({route.model}): {error}. "
@@ -485,16 +541,21 @@ def continue_consultation(
             reply=reply,
             phase="anamnesis",
             ai_status="completed",
+            usage=turn_usage,
         )
 
     analysis = _build_analysis_from_payload(payload)
     if _needs_medication_review(complaint, profile):
-        medication_notes = _fetch_medication_notes(
+        medication_notes, medication_completion = _fetch_medication_notes(
             settings,
             complaint,
             profile,
             labs,
+            user_id=user_id,
+            consultation_id=consultation_id,
         )
+        if medication_completion is not None:
+            turn_usage = _billing_from_completion(turn_usage, medication_completion)
         if medication_notes:
             medication_block = f"Комментарий по препаратам:\n{medication_notes}"
             analysis = SymptomAnalysisResult(
@@ -522,4 +583,5 @@ def continue_consultation(
         phase="conclusion",
         ai_status=analysis.ai_status,
         complaint=complaint_record,
+        usage=turn_usage,
     )

@@ -5,17 +5,33 @@ from pathlib import Path
 from shutil import copyfileobj
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.config import load_settings
 from app.database import get_connection
-from app.schemas import DocumentRecord
+from app.schemas import DocumentCostEstimateResponse, DocumentRecord
 from app.services.auth_service import AuthContext, get_auth_context
+from app.services.billing_errors import http_error_for_insufficient_credits
 from app.services.document_analyzer import extract_document_text
+from app.services.document_cost_estimator import estimate_document_cost
+from app.services.wallet_service import InsufficientCreditsError
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 UPLOAD_DIR = load_settings().uploads_dir
+
+
+def _estimate_to_response(estimate) -> DocumentCostEstimateResponse:
+    return DocumentCostEstimateResponse(
+        estimated_credits=estimate.estimated_credits,
+        requires_confirmation=estimate.requires_confirmation,
+        is_billable=estimate.is_billable,
+        analysis_type=estimate.analysis_type,
+        warning_message=estimate.warning_message,
+        page_count=estimate.page_count,
+        file_size_bytes=estimate.file_size_bytes,
+        model=estimate.model,
+    )
 
 
 @router.get("", response_model=list[DocumentRecord])
@@ -37,11 +53,35 @@ def list_documents(
     return [DocumentRecord(**dict(row)) for row in rows]
 
 
+@router.post("/estimate", response_model=DocumentCostEstimateResponse)
+def estimate_document_upload(
+    file: Annotated[UploadFile, File()],
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> DocumentCostEstimateResponse:
+    """Estimate credits for a document before OCR or extraction."""
+    del auth
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    original_name = Path(file.filename or "document").name
+    destination = UPLOAD_DIR / f"estimate_{uuid.uuid4().hex[:8]}_{original_name}"
+
+    try:
+        with destination.open("wb") as output:
+            copyfileobj(file.file, output)
+        estimate = estimate_document_cost(
+            destination,
+            content_type=file.content_type or "",
+        )
+        return _estimate_to_response(estimate)
+    finally:
+        destination.unlink(missing_ok=True)
+
+
 @router.post("", response_model=DocumentRecord, status_code=201)
 def upload_document(
     file: Annotated[UploadFile, File()],
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     description: Annotated[str, Form()] = "",
+    confirm_high_cost: Annotated[bool, Form()] = False,
 ) -> DocumentRecord:
     """Store a PDF, text file, scan, or image and extract text for the assistant."""
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -51,11 +91,31 @@ def upload_document(
     with destination.open("wb") as output:
         copyfileobj(file.file, output)
 
-    extraction = extract_document_text(
+    estimate = estimate_document_cost(
         destination,
         content_type=file.content_type or "",
-        description=description,
     )
+    if estimate.requires_confirmation and not confirm_high_cost:
+        destination.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail={
+                "message": estimate.warning_message
+                or "Для загрузки этого файла нужно подтверждение.",
+                "estimate": _estimate_to_response(estimate).model_dump(),
+            },
+        )
+
+    try:
+        extraction = extract_document_text(
+            destination,
+            content_type=file.content_type or "",
+            description=description,
+            user_id=auth.user_id,
+        )
+    except InsufficientCreditsError as error:
+        destination.unlink(missing_ok=True)
+        raise http_error_for_insufficient_credits(error) from error
 
     with get_connection() as connection:
         row = connection.execute(

@@ -7,7 +7,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.schemas import (
+    AdminTopUpRequest,
     AdminUserRecord,
+    AdminWalletResponse,
     BlockedEmailRecord,
     MessageResponse,
     RejectUserRequest,
@@ -21,6 +23,7 @@ from app.services.user_service import (
     list_users_by_status,
     reject_user,
 )
+from app.services.wallet_service import admin_top_up, get_wallet_balance
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -119,6 +122,67 @@ def reject_application(
         reason=payload.reason,
     )
     return _to_admin_record(user)
+
+
+@router.post("/users/{user_id}/wallet/top-up", response_model=AdminWalletResponse)
+def top_up_user_wallet(
+    user_id: str,
+    payload: AdminTopUpRequest,
+    admin: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AdminWalletResponse:
+    """Manually add credits to an approved user's wallet."""
+    require_admin(admin)
+    user = get_user_by_id(user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден.",
+        )
+    if user["status"] != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пополнение доступно только одобренным пользователям.",
+        )
+
+    try:
+        wallet = admin_top_up(
+            user_id=user_id,
+            credits=payload.credits,
+            admin_id=admin.user_id,
+            note=payload.note,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    return AdminWalletResponse(
+        user_id=wallet.user_id,
+        credits_balance=wallet.credits_balance,
+        free_turns_remaining=wallet.free_turns_remaining,
+    )
+
+
+@router.get("/users/{user_id}/wallet", response_model=AdminWalletResponse)
+def get_user_wallet(
+    user_id: str,
+    admin: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AdminWalletResponse:
+    """Return wallet balance for a user."""
+    require_admin(admin)
+    user = get_user_by_id(user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден.",
+        )
+    wallet = get_wallet_balance(user_id)
+    return AdminWalletResponse(
+        user_id=wallet.user_id,
+        credits_balance=wallet.credits_balance,
+        free_turns_remaining=wallet.free_turns_remaining,
+    )
 
 
 @router.delete("/users/{user_id}", response_model=MessageResponse)

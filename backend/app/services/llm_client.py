@@ -6,6 +6,12 @@ import httpx
 
 from app.config import Settings
 from app.services.llm_router import LlmTask, resolve_model_route
+from app.services.usage_service import (
+    UsageContext,
+    UsageLogResult,
+    log_llm_usage,
+    prepare_billable_request,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,12 +23,24 @@ class ChatMessage:
 
 
 @dataclass(frozen=True, slots=True)
+class TokenUsage:
+    """Token counts returned by the provider."""
+
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
 class ChatCompletionResult:
     """Text content returned by the LLM."""
 
     content: str
     model: str
     provider: str
+    usage: TokenUsage | None = None
+    usage_event_id: int | None = None
+    billing: UsageLogResult | None = None
 
 
 class LlmProviderError(RuntimeError):
@@ -45,6 +63,28 @@ def _resolve_base_url(settings: Settings, provider: str) -> str:
     return settings.aitunnel_base_url.rstrip("/")
 
 
+def _parse_token_usage(data: dict[str, object]) -> TokenUsage | None:
+    """Extract token usage from an OpenAI-compatible response."""
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        return None
+
+    prompt_tokens = usage.get("prompt_tokens", 0)
+    completion_tokens = usage.get("completion_tokens", 0)
+    total_tokens = usage.get("total_tokens", 0)
+
+    if not isinstance(prompt_tokens, int) or not isinstance(completion_tokens, int):
+        return None
+    if not isinstance(total_tokens, int):
+        total_tokens = prompt_tokens + completion_tokens
+
+    return TokenUsage(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+    )
+
+
 def chat_completion(
     settings: Settings,
     task: LlmTask,
@@ -52,6 +92,7 @@ def chat_completion(
     *,
     temperature: float = 0.3,
     timeout: float = 120.0,
+    usage_context: UsageContext | None = None,
 ) -> ChatCompletionResult:
     """Send a chat completion request to the configured provider."""
     route = resolve_model_route(task, settings)
@@ -59,6 +100,21 @@ def chat_completion(
 
     if not api_key:
         raise RuntimeError(f"API key for provider {route.provider} is not configured.")
+
+    if usage_context is not None:
+        context = UsageContext(
+            operation_type=usage_context.operation_type,
+            user_id=usage_context.user_id,
+            consultation_id=usage_context.consultation_id,
+            complaint_id=usage_context.complaint_id,
+            document_id=usage_context.document_id,
+            task=usage_context.task or task,
+            cache_hit=usage_context.cache_hit,
+            billable=usage_context.billable,
+        )
+        prepare_billable_request(context)
+    else:
+        context = None
 
     payload = {
         "model": route.model,
@@ -92,8 +148,27 @@ def chat_completion(
     if not isinstance(content, str) or not content.strip():
         raise RuntimeError("LLM returned an empty response.")
 
+    usage = _parse_token_usage(data)
+    billing: UsageLogResult | None = None
+    usage_event_id: int | None = None
+
+    if context is not None:
+        billing = log_llm_usage(
+            context=context,
+            provider=route.provider,
+            model=route.model,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+            total_tokens=usage.total_tokens if usage else 0,
+        )
+        if billing is not None:
+            usage_event_id = billing.event_id
+
     return ChatCompletionResult(
         content=content.strip(),
         model=route.model,
         provider=route.provider,
+        usage=usage,
+        usage_event_id=usage_event_id,
+        billing=billing,
     )

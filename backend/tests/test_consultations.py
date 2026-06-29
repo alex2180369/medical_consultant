@@ -30,7 +30,7 @@ def test_consultation_chat_anamnesis_turn(monkeypatch) -> None:
     from app.services import consultation_service
 
     def fake_chat_completion(
-        settings, task, messages, *, temperature=0.3, timeout=120.0
+        settings, task, messages, *, temperature=0.3, timeout=120.0, usage_context=None
     ):
         from app.services.llm_client import ChatCompletionResult
 
@@ -80,7 +80,7 @@ def test_consultation_chat_conclusion_turn(monkeypatch) -> None:
     from app.services import consultation_service
 
     def fake_chat_completion(
-        settings, task, messages, *, temperature=0.3, timeout=120.0
+        settings, task, messages, *, temperature=0.3, timeout=120.0, usage_context=None
     ):
         from app.services.llm_client import ChatCompletionResult
 

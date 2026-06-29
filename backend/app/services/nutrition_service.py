@@ -7,6 +7,8 @@ from app.config import Settings, load_settings
 from app.schemas import ComplaintRecord, MedicalProfile, NutritionPlanResponse
 from app.services.llm_client import ChatMessage, chat_completion
 from app.services.llm_router import LlmTask, resolve_model_route
+from app.services.usage_service import UsageContext
+from app.services.wallet_service import InsufficientCreditsError
 
 NUTRITION_SYSTEM_PROMPT = """
 Ты ИИ-нутрициолог для семейного локального медицинского приложения.
@@ -147,6 +149,8 @@ def generate_weekly_nutrition_plan(
     pantry_items: list[str],
     include_medical_recommendations: bool = False,
     settings: Settings | None = None,
+    *,
+    user_id: str | None = None,
 ) -> NutritionPlanResponse:
     """Generate a weekly menu with the configured nutrition model."""
     settings = settings or load_settings()
@@ -178,8 +182,15 @@ def generate_weekly_nutrition_plan(
             ],
             temperature=0.4,
             timeout=180.0,
+            usage_context=UsageContext(
+                user_id=user_id,
+                operation_type="nutrition",
+                task=LlmTask.NUTRITION,
+            ),
         )
         payload = _extract_json(completion.content)
+    except InsufficientCreditsError:
+        raise
     except Exception as error:
         return NutritionPlanResponse(
             ai_status="failed",

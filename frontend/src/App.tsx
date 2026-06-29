@@ -10,13 +10,16 @@ import {
   createLab,
   compareOpinions,
   DocumentRecord,
+  DocumentCostEstimate,
   getProfile,
   getSession,
+  getWallet,
   listComplaints,
   listDocuments,
   listLabs,
   saveProfile,
   sendConsultationChat,
+  estimateDocumentCost,
   uploadDocument
 } from "./api";
 import { LoginPage } from "./components/auth/LoginPage";
@@ -37,6 +40,7 @@ import {
   OpinionComparisonView
 } from "./components/OpinionComparisonView";
 import { NutritionPlanner } from "./components/NutritionPlanner";
+import { ConsultationReceiptPanel } from "./components/ConsultationReceiptPanel";
 import "./styles.css";
 
 const emptyProfile: MedicalProfile = {
@@ -115,6 +119,9 @@ type ChatMessage = {
   id: string;
   role: "assistant" | "user";
   content: string;
+  creditsCharged?: number;
+  estimatedCredits?: number;
+  usedFreeTurn?: boolean;
 };
 
 type AppPage =
@@ -208,20 +215,29 @@ function App() {
   );
   const chatMessagesRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState("");
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [freeTurnsRemaining, setFreeTurnsRemaining] = useState<number | null>(null);
+  const [documentCostEstimate, setDocumentCostEstimate] =
+    useState<DocumentCostEstimate | null>(null);
+  const [receiptComplaintId, setReceiptComplaintId] = useState<number | null>(null);
+  const [showChatReceipt, setShowChatReceipt] = useState(false);
 
   async function loadWorkspaceData() {
-    const [loadedProfile, loadedLabs, loadedComplaints, loadedDocuments] =
+    const [loadedProfile, loadedLabs, loadedComplaints, loadedDocuments, wallet] =
       await Promise.all([
         getProfile(),
         listLabs(),
         listComplaints(),
-        listDocuments()
+        listDocuments(),
+        getWallet()
       ]);
 
     setProfile(loadedProfile);
     setLabs(loadedLabs);
     setComplaints(loadedComplaints);
     setDocuments(loadedDocuments);
+    setWalletBalance(wallet.credits_balance);
+    setFreeTurnsRemaining(wallet.free_turns_remaining);
     setDoctorFeedbackDrafts(
       Object.fromEntries(
         loadedComplaints.map((item) => [item.id, item.doctor_feedback])
@@ -343,9 +359,17 @@ function App() {
         {
           id: `assistant-${turn.consultation_id}-${Date.now()}`,
           role: "assistant",
-          content: turn.reply
+          content: turn.reply,
+          creditsCharged: turn.usage?.credits_charged,
+          estimatedCredits: turn.usage?.estimated_credits,
+          usedFreeTurn: turn.usage?.used_free_turn
         }
       ]);
+
+      if (turn.usage) {
+        setWalletBalance(turn.usage.balance_remaining);
+        setFreeTurnsRemaining(turn.usage.free_turns_remaining);
+      }
 
       if (turn.phase === "conclusion" && turn.complaint) {
         setComplaints(await listComplaints());
@@ -423,16 +447,33 @@ function App() {
     await submitDocument();
   }
 
-  async function submitDocument() {
+  async function submitDocument(confirmHighCost = false) {
     if (!documentFile) {
       setStatus("Выберите или перетащите файл анализа/снимка.");
       return;
     }
 
-    setStatus("Загружаем файл и извлекаем текст...");
+    setStatus("Оцениваем стоимость обработки...");
 
     try {
-      const uploaded = await uploadDocument(documentFile, documentDescription);
+      const estimate = await estimateDocumentCost(documentFile);
+      if (estimate.requires_confirmation && !confirmHighCost) {
+        setDocumentCostEstimate(estimate);
+        setStatus(
+          estimate.warning_message ??
+            `OCR может стоить около ${estimate.estimated_credits} 💎. Подтвердите загрузку.`
+        );
+        return;
+      }
+
+      setDocumentCostEstimate(null);
+      setStatus("Загружаем файл и извлекаем текст...");
+
+      const uploaded = await uploadDocument(
+        documentFile,
+        documentDescription,
+        confirmHighCost || estimate.requires_confirmation
+      );
       setDocuments(await listDocuments());
       setDocumentFile(null);
       setDocumentDescription("");
@@ -466,12 +507,14 @@ function App() {
     const file = event.dataTransfer.files.item(0);
     if (file) {
       setDocumentFile(file);
+      setDocumentCostEstimate(null);
     }
   }
 
   function handleDocumentInputChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     setDocumentFile(file);
+    setDocumentCostEstimate(null);
   }
 
   function renderDocumentUploadInstructions() {
@@ -555,7 +598,34 @@ function App() {
             <h3>ИИ медицинский консультант</h3>
             <p>● Онлайн — информационная поддержка</p>
           </div>
+          {walletBalance !== null && (
+            <div className="chat-wallet-badge" title="Баланс кредитов">
+              💎 {walletBalance}
+              {walletBalance === 0 && freeTurnsRemaining !== null && freeTurnsRemaining > 0 && (
+                <span className="chat-wallet-free">
+                  {" "}
+                  · бесплатных ходов: {freeTurnsRemaining}
+                </span>
+              )}
+            </div>
+          )}
+          {consultationId !== null && (
+            <button
+              type="button"
+              className="secondary-button chat-receipt-button"
+              onClick={() => setShowChatReceipt((current) => !current)}
+            >
+              {showChatReceipt ? "Скрыть чек" : "Чек сессии"}
+            </button>
+          )}
         </div>
+
+        {showChatReceipt && consultationId !== null && (
+          <ConsultationReceiptPanel
+            consultationId={consultationId}
+            onClose={() => setShowChatReceipt(false)}
+          />
+        )}
 
         <div className="chat-messages" ref={chatMessagesRef}>
           {welcomeMessage && (
@@ -573,7 +643,19 @@ function App() {
               <span className="msg-avatar">
                 {message.role === "assistant" ? "🤖" : "👤"}
               </span>
-              <div className="bubble">{message.content}</div>
+              <div className="bubble-stack">
+                <div className="bubble">{message.content}</div>
+                {message.role === "assistant" &&
+                  (message.usedFreeTurn ||
+                    (message.creditsCharged ?? 0) > 0 ||
+                    (message.estimatedCredits ?? 0) > 0) && (
+                    <div className="message-usage-badge">
+                      {message.usedFreeTurn
+                        ? "Бесплатный ход"
+                        : `На этот ответ: ${message.creditsCharged ?? message.estimatedCredits} 💎`}
+                    </div>
+                  )}
+              </div>
             </div>
           ))}
 
@@ -767,6 +849,33 @@ function App() {
             />
           </label>
           <button type="submit">Загрузить файл</button>
+          {documentCostEstimate && (
+            <div className="document-cost-warning">
+              <p>
+                {documentCostEstimate.warning_message ??
+                  `Обработка может стоить около ${documentCostEstimate.estimated_credits} 💎.`}
+              </p>
+              <p className="muted">
+                Оценка: {documentCostEstimate.estimated_credits} 💎 · тип:{" "}
+                {documentCostEstimate.analysis_type}
+              </p>
+              <div className="document-cost-warning-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setDocumentCostEstimate(null)}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void submitDocument(true)}
+                >
+                  Подтвердить и загрузить
+                </button>
+              </div>
+            </div>
+          )}
           {(documentFile || documents.length > 0) && (
             <div className="lab-list">
               {documentFile && (
@@ -861,16 +970,33 @@ function App() {
             <article key={item.id} className="complaint-item chat-thread">
               <div className="complaint-header">
                 <strong>{item.occurred_at}</strong>
-                {item.ai_status === "completed" && item.ai_urgency && (
-                  <span className={`urgency urgency-${item.ai_urgency}`}>
-                    {item.ai_urgency === "urgent"
-                      ? "Срочно"
-                      : item.ai_urgency === "soon"
-                        ? "Обратиться скоро"
-                        : "Планово"}
-                  </span>
-                )}
+                <div className="complaint-header-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      setReceiptComplaintId((current) =>
+                        current === item.id ? null : item.id
+                      )
+                    }
+                  >
+                    {receiptComplaintId === item.id ? "Скрыть чек" : "Чек"}
+                  </button>
+                  {item.ai_status === "completed" && item.ai_urgency && (
+                    <span className={`urgency urgency-${item.ai_urgency}`}>
+                      {item.ai_urgency === "urgent"
+                        ? "Срочно"
+                        : item.ai_urgency === "soon"
+                          ? "Обратиться скоро"
+                          : "Планово"}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {receiptComplaintId === item.id && (
+                <ConsultationReceiptPanel complaintId={item.id} />
+              )}
 
               <div className="chat-message chat-message-user">
                 <span className="chat-message-label">Шаг 1 — симптомы</span>

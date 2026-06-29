@@ -85,6 +85,7 @@ def _process_new_application(user_id: str) -> None:
     enrichment = enrich_registration(
         email=str(user["email"]),
         display_name=str(user["display_name"]),
+        user_id=user_id,
     )
     save_registration_enrichment(
         user_id,

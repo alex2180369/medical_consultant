@@ -246,6 +246,12 @@ def create_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Не удалось создать пользователя.",
         )
+
+    if user_status == "approved":
+        from app.services.wallet_service import grant_welcome_bonus
+
+        grant_welcome_bonus(user_id)
+
     return user
 
 
@@ -310,6 +316,10 @@ def approve_user(*, user_id: str, admin_id: str) -> dict[str, Any]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Не удалось обновить пользователя.",
         )
+
+    from app.services.wallet_service import grant_welcome_bonus
+
+    grant_welcome_bonus(user_id)
     return updated
 
 

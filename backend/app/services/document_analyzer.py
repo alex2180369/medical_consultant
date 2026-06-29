@@ -9,6 +9,7 @@ from app.config import Settings, load_settings
 from app.database import get_connection
 from app.services.llm_client import ChatMessage, chat_completion
 from app.services.llm_router import LlmTask
+from app.services.usage_service import UsageContext
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 TEXT_EXTENSIONS = {".txt"}
@@ -77,7 +78,14 @@ def _image_mime_type(path: Path, content_type: str) -> str:
     return guessed or "image/jpeg"
 
 
-def _ocr_image(path: Path, content_type: str, settings: Settings) -> str:
+def _ocr_image(
+    path: Path,
+    content_type: str,
+    settings: Settings,
+    *,
+    user_id: str | None = None,
+    document_id: int | None = None,
+) -> str:
     """Run OCR on an image through the imaging model."""
     if not settings.proxyapi_api_key:
         raise RuntimeError("PROXYAPI_API_KEY is not configured.")
@@ -103,6 +111,12 @@ def _ocr_image(path: Path, content_type: str, settings: Settings) -> str:
         ],
         temperature=0.1,
         timeout=180.0,
+        usage_context=UsageContext(
+            user_id=user_id,
+            operation_type="ocr",
+            document_id=document_id,
+            task=LlmTask.IMAGING,
+        ),
     )
     return completion.content.strip()
 
@@ -113,6 +127,8 @@ def extract_document_text(
     content_type: str = "",
     description: str = "",
     settings: Settings | None = None,
+    user_id: str | None = None,
+    document_id: int | None = None,
 ) -> DocumentExtractionResult:
     """Extract readable text from an uploaded document."""
     settings = settings or load_settings()
@@ -134,7 +150,13 @@ def extract_document_text(
             else:
                 status = "completed"
         elif suffix in IMAGE_EXTENSIONS:
-            extracted = _ocr_image(path, content_type, settings)
+            extracted = _ocr_image(
+                path,
+                content_type,
+                settings,
+                user_id=user_id,
+                document_id=document_id,
+            )
             status = "completed" if extracted.strip() else "failed"
         else:
             extracted = description or "Формат файла пока не поддерживается."

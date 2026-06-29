@@ -9,6 +9,8 @@ from app.database import get_connection
 from app.schemas import ComplaintRecord, MedicalProfile
 from app.services.llm_client import ChatMessage, chat_completion
 from app.services.llm_router import LlmTask, resolve_model_route
+from app.services.usage_service import UsageContext
+from app.services.wallet_service import InsufficientCreditsError
 from app.services.symptom_analyzer import (
     _load_profile,
     _load_recent_labs,
@@ -216,8 +218,16 @@ def compare_opinions(
                 ChatMessage(role="user", content=user_prompt),
             ],
             timeout=180.0,
+            usage_context=UsageContext(
+                user_id=user_id,
+                operation_type="opinion_comparison",
+                complaint_id=complaint_id,
+                task=LlmTask.REVIEW,
+            ),
         )
         payload = _extract_json(completion.content)
+    except InsufficientCreditsError:
+        raise
     except Exception as error:
         result = OpinionComparisonResult(
             ai_status="failed",

@@ -5,13 +5,48 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.database import get_connection
-from app.schemas import ComplaintCreate, ComplaintRecord, OpinionCompareRequest
+from app.schemas import (
+    ComplaintCreate,
+    ComplaintRecord,
+    ConsultationReceiptResponse,
+    OpinionCompareRequest,
+    ReceiptLineResponse,
+)
 from app.services.auth_service import AuthContext, get_auth_context
+from app.services.billing_errors import http_error_for_insufficient_credits
 from app.services.opinion_comparison_service import compare_opinions
 from app.services.pii_filter import PII_WARNING, detect_sensitive_data
+from app.services.receipt_service import ReceiptNotFoundError, get_complaint_receipt
 from app.services.symptom_analyzer import analyze_complaint
+from app.services.wallet_service import InsufficientCreditsError
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
+
+
+def _receipt_to_response(receipt) -> ConsultationReceiptResponse:
+    return ConsultationReceiptResponse(
+        consultation_id=receipt.consultation_id,
+        occurred_at=receipt.occurred_at,
+        status=receipt.status,
+        complaint_id=receipt.complaint_id,
+        total_tokens=receipt.total_tokens,
+        total_estimated_credits=receipt.total_estimated_credits,
+        total_charged_credits=receipt.total_charged_credits,
+        free_turns_used=receipt.free_turns_used,
+        lines=[
+            ReceiptLineResponse(
+                operation_type=line.operation_type,
+                operation_label=line.operation_label,
+                model=line.model,
+                event_count=line.event_count,
+                total_tokens=line.total_tokens,
+                estimated_credits=line.estimated_credits,
+                charged_credits=line.charged_credits,
+            )
+            for line in receipt.lines
+        ],
+        generated_at=receipt.generated_at,
+    )
 
 
 def _fetch_complaint(
@@ -93,6 +128,23 @@ def list_complaints(
     return [ComplaintRecord(**dict(row)) for row in rows]
 
 
+@router.get("/{complaint_id}/receipt", response_model=ConsultationReceiptResponse)
+def complaint_receipt(
+    complaint_id: int,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> ConsultationReceiptResponse:
+    """Return a usage receipt for the consultation linked to a complaint."""
+    try:
+        receipt = get_complaint_receipt(
+            complaint_id=complaint_id,
+            user_id=auth.user_id,
+        )
+    except ReceiptNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return _receipt_to_response(receipt)
+
+
 @router.post("", response_model=ComplaintRecord, status_code=201)
 def create_complaint(
     payload: ComplaintCreate,
@@ -130,11 +182,14 @@ def create_complaint(
         ).fetchone()
         complaint_id = int(row["id"])
 
-    analysis = analyze_complaint(
-        payload,
-        analysis_mode=payload.analysis_mode,
-        user_id=auth.user_id,
-    )
+    try:
+        analysis = analyze_complaint(
+            payload,
+            analysis_mode=payload.analysis_mode,
+            user_id=auth.user_id,
+        )
+    except InsufficientCreditsError as error:
+        raise http_error_for_insufficient_credits(error) from error
 
     with get_connection() as connection:
         return _save_analysis(
@@ -158,6 +213,8 @@ def compare_complaint_opinions(
             payload.doctor_feedback,
             auth.user_id,
         )
+    except InsufficientCreditsError as error:
+        raise http_error_for_insufficient_credits(error) from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -183,11 +240,14 @@ def review_complaint(
             auth.user_id,
         )
 
-    analysis = analyze_complaint(
-        _complaint_to_create(record),
-        analysis_mode="review",
-        user_id=auth.user_id,
-    )
+    try:
+        analysis = analyze_complaint(
+            _complaint_to_create(record),
+            analysis_mode="review",
+            user_id=auth.user_id,
+        )
+    except InsufficientCreditsError as error:
+        raise http_error_for_insufficient_credits(error) from error
 
     with get_connection() as connection:
         return _save_analysis(

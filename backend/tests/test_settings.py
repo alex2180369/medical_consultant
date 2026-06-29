@@ -29,6 +29,10 @@ def make_test_settings(**overrides: object) -> Settings:
         "smtp_password": None,
         "smtp_from_email": None,
         "smtp_use_tls": True,
+        "admin_email": "admin@example.com",
+        "ops_notify_url": None,
+        "ops_token": None,
+        "admin_enrichment_model": "gpt-4o-mini",
     }
     defaults.update(overrides)
     return Settings(**defaults)

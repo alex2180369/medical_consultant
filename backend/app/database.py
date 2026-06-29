@@ -161,6 +161,10 @@ def initialize_database() -> None:
         )
         _run_migrations(connection)
 
+    from app.services.wallet_service import backfill_wallets_for_approved_users
+
+    backfill_wallets_for_approved_users()
+
 
 def _run_migrations(connection: psycopg.Connection) -> None:
     """Apply incremental schema changes for user moderation."""
@@ -177,6 +181,66 @@ def _run_migrations(connection: psycopg.Connection) -> None:
         ALTER TABLE users ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS rejected_by TEXT;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_reason TEXT NOT NULL DEFAULT '';
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS llm_usage_events (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT,
+            consultation_id INTEGER
+                REFERENCES consultations(id) ON DELETE SET NULL,
+            complaint_id INTEGER
+                REFERENCES complaints(id) ON DELETE SET NULL,
+            document_id INTEGER
+                REFERENCES documents(id) ON DELETE SET NULL,
+            operation_type TEXT NOT NULL,
+            llm_task TEXT,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens INTEGER NOT NULL DEFAULT 0,
+            provider_cost_rub NUMERIC(12, 6) NOT NULL DEFAULT 0,
+            estimated_credits INTEGER NOT NULL DEFAULT 0,
+            cache_hit BOOLEAN NOT NULL DEFAULT FALSE,
+            is_charged BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_llm_usage_events_user_id
+            ON llm_usage_events(user_id);
+        CREATE INDEX IF NOT EXISTS idx_llm_usage_events_consultation_id
+            ON llm_usage_events(consultation_id);
+        CREATE INDEX IF NOT EXISTS idx_llm_usage_events_created_at
+            ON llm_usage_events(created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS user_wallets (
+            user_id TEXT PRIMARY KEY REFERENCES profiles(user_id) ON DELETE CASCADE,
+            credits_balance INTEGER NOT NULL DEFAULT 0,
+            free_turns_remaining INTEGER NOT NULL DEFAULT 2,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS wallet_transactions (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+            delta_credits INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            reference_id TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_id
+            ON wallet_transactions(user_id, created_at DESC);
+        """
+        )
+
+    connection.execute(
+        """
+        ALTER TABLE llm_usage_events
+            ADD COLUMN IF NOT EXISTS charged_credits INTEGER NOT NULL DEFAULT 0;
         """
     )
 

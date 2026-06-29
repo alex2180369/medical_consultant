@@ -12,7 +12,9 @@ from app.schemas import (
     NutritionPlanResponse,
 )
 from app.services.auth_service import AuthContext, get_auth_context
+from app.services.billing_errors import http_error_for_insufficient_credits
 from app.services.nutrition_service import generate_weekly_nutrition_plan
+from app.services.wallet_service import InsufficientCreditsError
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
@@ -58,9 +60,13 @@ def generate_weekly_menu(
         if payload.include_medical_recommendations
         else []
     )
-    return generate_weekly_nutrition_plan(
-        profile=_load_profile(user_id),
-        complaints=complaints,
-        pantry_items=payload.pantry_items,
-        include_medical_recommendations=payload.include_medical_recommendations,
-    )
+    try:
+        return generate_weekly_nutrition_plan(
+            profile=_load_profile(user_id),
+            complaints=complaints,
+            pantry_items=payload.pantry_items,
+            include_medical_recommendations=payload.include_medical_recommendations,
+            user_id=user_id,
+        )
+    except InsufficientCreditsError as error:
+        raise http_error_for_insufficient_credits(error) from error

@@ -8,8 +8,10 @@ from typing import Literal
 from app.config import Settings, load_settings
 from app.database import get_connection
 from app.schemas import ComplaintCreate, MedicalProfile
-from app.services.llm_client import ChatMessage, chat_completion
+from app.services.llm_client import ChatMessage, ChatCompletionResult, chat_completion
 from app.services.llm_router import LlmTask, resolve_model_route
+from app.services.usage_service import UsageContext
+from app.services.wallet_service import InsufficientCreditsError
 
 AnalysisMode = Literal["standard", "complex", "review"]
 
@@ -281,10 +283,14 @@ def _fetch_medication_notes(
     complaint: ComplaintCreate,
     profile: MedicalProfile,
     labs: list[str],
-) -> str:
+    *,
+    user_id: str | None = None,
+    consultation_id: int | None = None,
+    complaint_id: int | None = None,
+) -> tuple[str, ChatCompletionResult | None]:
     """Ask the medications model for interaction and safety notes."""
     if not _needs_medication_review(complaint, profile):
-        return ""
+        return "", None
 
     user_prompt = _build_user_prompt(complaint, profile, labs)
     try:
@@ -295,12 +301,23 @@ def _fetch_medication_notes(
                 ChatMessage(role="system", content=MEDICATIONS_PROMPT),
                 ChatMessage(role="user", content=user_prompt),
             ],
+            usage_context=UsageContext(
+                user_id=user_id,
+                operation_type=(
+                    "chat_medications"
+                    if consultation_id is not None
+                    else "complaint_medications"
+                ),
+                consultation_id=consultation_id,
+                complaint_id=complaint_id,
+                task=LlmTask.MEDICATIONS,
+            ),
         )
         payload = _extract_json(completion.content)
     except Exception:
-        return ""
+        return "", None
 
-    return str(payload.get("medication_notes", "")).strip()
+    return str(payload.get("medication_notes", "")).strip(), completion
 
 
 def analyze_complaint(
@@ -347,8 +364,15 @@ def analyze_complaint(
                 ChatMessage(role="user", content=user_prompt),
             ],
             timeout=timeout,
+            usage_context=UsageContext(
+                user_id=user_id,
+                operation_type="complaint",
+                task=task,
+            ),
         )
         payload = _extract_json(completion.content)
+    except InsufficientCreditsError:
+        raise
     except Exception as error:
         return SymptomAnalysisResult(
             ai_status="failed",
@@ -367,7 +391,13 @@ def analyze_complaint(
     urgency = str(payload.get("urgency", "routine")).strip() or "routine"
     summary = str(payload.get("summary", "")).strip()
 
-    medication_notes = _fetch_medication_notes(settings, complaint, profile, labs)
+    medication_notes, medication_completion = _fetch_medication_notes(
+        settings,
+        complaint,
+        profile,
+        labs,
+        user_id=user_id,
+    )
     if medication_notes:
         medication_block = f"Комментарий по препаратам:\n{medication_notes}"
         treatment = (

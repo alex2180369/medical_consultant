@@ -7,10 +7,12 @@ import {
   adminLogout,
   approveApplication,
   disableUser,
+  getUserWallet,
   listApplications,
   listApprovedUsers,
   listBlockedEmails,
-  rejectApplication
+  rejectApplication,
+  topUpUserWallet
 } from "./api";
 import { getAccessToken } from "../lib/auth";
 import "../styles.css";
@@ -183,6 +185,42 @@ function UserCard({
 }) {
   const [error, setError] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [topUpCredits, setTopUpCredits] = useState("100");
+  const [topUpNote, setTopUpNote] = useState("");
+  const [topUpStatus, setTopUpStatus] = useState("");
+
+  useEffect(() => {
+    void getUserWallet(item.id)
+      .then((wallet) => setWalletBalance(wallet.credits_balance))
+      .catch(() => setWalletBalance(null));
+  }, [item.id]);
+
+  async function handleTopUp() {
+    const credits = Number(topUpCredits);
+    if (!Number.isFinite(credits) || credits <= 0) {
+      setError("Введите положительное число кредитов.");
+      return;
+    }
+
+    setError("");
+    setTopUpStatus("");
+    setIsBusy(true);
+    try {
+      const wallet = await topUpUserWallet(item.id, credits, topUpNote.trim());
+      setWalletBalance(wallet.credits_balance);
+      setTopUpStatus(`Баланс обновлён: ${wallet.credits_balance} 💎`);
+      setTopUpNote("");
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Не удалось пополнить баланс."
+      );
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   async function handleDisable() {
     if (
@@ -218,6 +256,35 @@ function UserCard({
       <p>
         <span>Одобрен:</span> {formatDate(item.approved_at)}
       </p>
+      {walletBalance !== null && (
+        <p>
+          <span>Баланс:</span> {walletBalance} 💎
+        </p>
+      )}
+      <div className="admin-top-up-form">
+        <label>
+          <span>Пополнить кредиты</span>
+          <input
+            type="number"
+            min={1}
+            value={topUpCredits}
+            onChange={(event) => setTopUpCredits(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Комментарий</span>
+          <input
+            type="text"
+            value={topUpNote}
+            onChange={(event) => setTopUpNote(event.target.value)}
+            placeholder="Причина пополнения"
+          />
+        </label>
+        <button type="button" onClick={() => void handleTopUp()} disabled={isBusy}>
+          Пополнить баланс
+        </button>
+      </div>
+      {topUpStatus && <p className="admin-success">{topUpStatus}</p>}
       {error && <div className="admin-error">{error}</div>}
       <div className="admin-actions">
         <button

@@ -108,6 +108,97 @@ export type ConsultationChatResponse = {
   phase: "anamnesis" | "conclusion";
   ai_status: string;
   complaint: ComplaintRecord | null;
+  usage: TurnUsageInfo | null;
+};
+
+export type TurnUsageInfo = {
+  credits_charged: number;
+  estimated_credits: number;
+  tokens_total: number;
+  model: string;
+  balance_remaining: number;
+  free_turns_remaining: number;
+  used_free_turn: boolean;
+};
+
+export type WalletInfo = {
+  credits_balance: number;
+  free_turns_remaining: number;
+  credits_per_rub: number;
+  starter_credits: number;
+  payment_gateway_status: string;
+};
+
+export type UsageSummary = {
+  total_events: number;
+  total_tokens: number;
+  total_estimated_credits: number;
+  total_charged_credits: number;
+  credits_per_rub: number;
+  by_operation: Record<string, number>;
+  billing_mode: string;
+  note: string;
+};
+
+export type UsageEvent = {
+  id: number;
+  operation_type: string;
+  llm_task: string | null;
+  provider: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_credits: number;
+  charged_credits: number;
+  cache_hit: boolean;
+  is_charged: boolean;
+  consultation_id: number | null;
+  complaint_id: number | null;
+  document_id: number | null;
+  created_at: string;
+};
+
+export type WalletTransaction = {
+  id: number;
+  delta_credits: number;
+  reason: string;
+  reference_id: string | null;
+  created_at: string;
+};
+
+export type DocumentCostEstimate = {
+  estimated_credits: number;
+  requires_confirmation: boolean;
+  is_billable: boolean;
+  analysis_type: string;
+  warning_message: string | null;
+  page_count: number | null;
+  file_size_bytes: number;
+  model: string | null;
+};
+
+export type ReceiptLine = {
+  operation_type: string;
+  operation_label: string;
+  model: string;
+  event_count: number;
+  total_tokens: number;
+  estimated_credits: number;
+  charged_credits: number;
+};
+
+export type ConsultationReceipt = {
+  consultation_id: number;
+  occurred_at: string | null;
+  status: string;
+  complaint_id: number | null;
+  total_tokens: number;
+  total_estimated_credits: number;
+  total_charged_credits: number;
+  free_turns_used: number;
+  lines: ReceiptLine[];
+  generated_at: string;
 };
 
 export type NutritionPlanResponse = {
@@ -161,6 +252,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     if (response.status === 504) {
       throw new Error(
         "Сервер долго ждёт ответ модели. Попробуйте ещё раз или отключите «Сложный случай»."
+      );
+    }
+
+    if (response.status === 402) {
+      throw new Error(
+        detail ||
+          "Недостаточно кредитов. Пополните баланс в разделе «Настройки → Учёт»."
       );
     }
 
@@ -227,6 +325,24 @@ export function deleteAccount(): Promise<void> {
   });
 }
 
+export function getWallet(): Promise<WalletInfo> {
+  return request<WalletInfo>("/api/account/wallet");
+}
+
+export function getUsageSummary(): Promise<UsageSummary> {
+  return request<UsageSummary>("/api/account/usage/summary");
+}
+
+export function getUsageEvents(limit = 20): Promise<UsageEvent[]> {
+  return request<UsageEvent[]>(`/api/account/usage/events?limit=${limit}`);
+}
+
+export function getWalletTransactions(limit = 10): Promise<WalletTransaction[]> {
+  return request<WalletTransaction[]>(
+    `/api/account/wallet/transactions?limit=${limit}`
+  );
+}
+
 export function getProfile(): Promise<MedicalProfile> {
   return request<MedicalProfile>("/api/profile");
 }
@@ -289,13 +405,46 @@ export function listDocuments(): Promise<DocumentRecord[]> {
   return request<DocumentRecord[]>("/api/documents");
 }
 
+export async function estimateDocumentCost(file: File): Promise<DocumentCostEstimate> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const headers = await buildHeaders();
+  headers.delete("Content-Type");
+
+  const response = await fetch(`${API_BASE_URL}/api/documents/estimate`, {
+    method: "POST",
+    headers,
+    body: formData
+  });
+
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const payload = (await response.json()) as { detail?: unknown };
+      if (typeof payload.detail === "string") {
+        detail = payload.detail;
+      }
+    } catch {
+      // Keep generic HTTP status when response body is not JSON.
+    }
+    throw new Error(detail);
+  }
+
+  return response.json() as Promise<DocumentCostEstimate>;
+}
+
 export async function uploadDocument(
   file: File,
-  description: string
+  description: string,
+  confirmHighCost = false
 ): Promise<DocumentRecord> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("description", description);
+  if (confirmHighCost) {
+    formData.append("confirm_high_cost", "true");
+  }
 
   const headers = await buildHeaders();
   headers.delete("Content-Type");
@@ -320,4 +469,14 @@ export async function uploadDocument(
   }
 
   return response.json() as Promise<DocumentRecord>;
+}
+
+export function getConsultationReceipt(
+  consultationId: number
+): Promise<ConsultationReceipt> {
+  return request<ConsultationReceipt>(`/api/consultations/${consultationId}/receipt`);
+}
+
+export function getComplaintReceipt(complaintId: number): Promise<ConsultationReceipt> {
+  return request<ConsultationReceipt>(`/api/complaints/${complaintId}/receipt`);
 }

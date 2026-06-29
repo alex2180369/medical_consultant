@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from app.config import load_settings
 from app.services.llm_client import ChatMessage, LlmProviderError, chat_completion
 from app.services.llm_router import LlmTask
+from app.services.usage_service import UsageContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +51,12 @@ def _fallback_enrichment(email: str, display_name: str) -> RegistrationEnrichmen
     )
 
 
-def enrich_registration(*, email: str, display_name: str) -> RegistrationEnrichment:
+def enrich_registration(
+    *,
+    email: str,
+    display_name: str,
+    user_id: str | None = None,
+) -> RegistrationEnrichment:
     """Analyze a registration application and return admin hints."""
     settings = load_settings()
     if not settings.proxyapi_api_key and not settings.aitunnel_api_key:
@@ -87,6 +93,12 @@ def enrich_registration(*, email: str, display_name: str) -> RegistrationEnrichm
             ],
             temperature=0.1,
             timeout=45.0,
+            usage_context=UsageContext(
+                user_id=user_id,
+                operation_type="admin_enrichment",
+                task=LlmTask.ADMIN_ENRICHMENT,
+                billable=False,
+            ),
         )
         payload = _extract_json_payload(result.content)
     except (LlmProviderError, ValueError, json.JSONDecodeError, RuntimeError):
