@@ -221,6 +221,12 @@ function App() {
     useState<DocumentCostEstimate | null>(null);
   const [receiptComplaintId, setReceiptComplaintId] = useState<number | null>(null);
   const [showChatReceipt, setShowChatReceipt] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"profile" | "billing">(
+    "profile"
+  );
+  const [paymentReturnOrderId, setPaymentReturnOrderId] = useState<string | null>(
+    null
+  );
 
   async function loadWorkspaceData() {
     const [loadedProfile, loadedLabs, loadedComplaints, loadedDocuments, wallet] =
@@ -268,6 +274,39 @@ function App() {
   useEffect(() => {
     void bootstrapSession();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get("view");
+    const tab = params.get("tab");
+    const payment = params.get("payment");
+    const orderId = params.get("order_id");
+
+    if (view === "settings") {
+      setActivePage("settings");
+    }
+    if (tab === "billing") {
+      setSettingsInitialTab("billing");
+    }
+    if (payment === "return" && orderId) {
+      setPaymentReturnOrderId(orderId);
+    }
+  }, []);
+
+  function clearPaymentReturnParams() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("view");
+    url.searchParams.delete("tab");
+    url.searchParams.delete("payment");
+    url.searchParams.delete("order_id");
+    const nextSearch = url.searchParams.toString();
+    window.history.replaceState(
+      {},
+      "",
+      nextSearch ? `${url.pathname}?${nextSearch}` : url.pathname
+    );
+    setPaymentReturnOrderId(null);
+  }
 
   useEffect(() => {
     if (session === null) {
@@ -1625,6 +1664,9 @@ function App() {
           <SettingsPage
             email={session?.user.email ?? ""}
             name={session?.user.name ?? ""}
+            initialTab={settingsInitialTab}
+            paymentReturnOrderId={paymentReturnOrderId}
+            onPaymentReturnHandled={clearPaymentReturnParams}
             onPrivacy={() => navigateTo("privacy")}
             onAbout={() => navigateTo("about")}
             onLegal={() => navigateTo("legal")}

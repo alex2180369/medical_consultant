@@ -234,6 +234,28 @@ def _run_migrations(connection: psycopg.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_wallet_transactions_user_id
             ON wallet_transactions(user_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS payment_orders (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+            package_id TEXT NOT NULL,
+            amount_rub NUMERIC(10, 2) NOT NULL,
+            credits INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            provider TEXT NOT NULL DEFAULT 'yookassa',
+            provider_payment_id TEXT,
+            confirmation_url TEXT,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            paid_at TIMESTAMPTZ
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_orders_provider_payment_id
+            ON payment_orders(provider_payment_id)
+            WHERE provider_payment_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id
+            ON payment_orders(user_id, created_at DESC);
         """
         )
 

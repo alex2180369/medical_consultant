@@ -167,6 +167,32 @@ export type WalletTransaction = {
   created_at: string;
 };
 
+export type TopUpPackage = {
+  id: string;
+  credits: number;
+  amount_rub: number;
+  title: string;
+};
+
+export type PaymentPackagesInfo = {
+  payment_gateway_status: string;
+  credits_per_rub: number;
+  packages: TopUpPackage[];
+};
+
+export type PaymentOrder = {
+  id: string;
+  package_id: string;
+  amount_rub: number;
+  credits: number;
+  status: string;
+  provider: string;
+  confirmation_url: string | null;
+  created_at: string;
+  updated_at: string;
+  paid_at: string | null;
+};
+
 export type DocumentCostEstimate = {
   estimated_credits: number;
   requires_confirmation: boolean;
@@ -341,6 +367,21 @@ export function getWalletTransactions(limit = 10): Promise<WalletTransaction[]> 
   return request<WalletTransaction[]>(
     `/api/account/wallet/transactions?limit=${limit}`
   );
+}
+
+export function getPaymentPackages(): Promise<PaymentPackagesInfo> {
+  return request<PaymentPackagesInfo>("/api/account/payments/packages");
+}
+
+export function createPayment(packageId: string): Promise<PaymentOrder> {
+  return request<PaymentOrder>("/api/account/payments", {
+    method: "POST",
+    body: JSON.stringify({ package_id: packageId })
+  });
+}
+
+export function getPaymentOrder(orderId: string): Promise<PaymentOrder> {
+  return request<PaymentOrder>(`/api/account/payments/${orderId}`);
 }
 
 export function getProfile(): Promise<MedicalProfile> {

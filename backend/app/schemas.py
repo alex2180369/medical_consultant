@@ -258,6 +258,44 @@ class WalletResponse(BaseModel):
     payment_gateway_status: str = "coming_soon"
 
 
+class TopUpPackageResponse(BaseModel):
+    """Wallet top-up package available for online payment."""
+
+    id: str
+    credits: int
+    amount_rub: float
+    title: str
+
+
+class PaymentPackagesResponse(BaseModel):
+    """Available payment packages and gateway status."""
+
+    payment_gateway_status: str
+    credits_per_rub: int
+    packages: list[TopUpPackageResponse]
+
+
+class CreatePaymentRequest(BaseModel):
+    """Request to create an online payment."""
+
+    package_id: str = Field(min_length=1, max_length=64)
+
+
+class PaymentOrderResponse(BaseModel):
+    """Payment order state for the authenticated user."""
+
+    id: str
+    package_id: str
+    amount_rub: float
+    credits: int
+    status: str
+    provider: str
+    confirmation_url: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    paid_at: datetime | None = None
+
+
 class WalletTransactionResponse(BaseModel):
     """Wallet transaction visible to the user."""
 

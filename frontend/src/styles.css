@@ -2371,6 +2371,50 @@ label {
   margin-top: 8px;
 }
 
+.billing-status {
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.billing-top-up-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.billing-top-up-card {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.billing-top-up-card:hover:not(:disabled) {
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+.billing-top-up-card:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.billing-top-up-card-disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
+.billing-top-up-card-disabled:hover {
+  border-color: var(--border);
+}
+
 .document-cost-warning {
   border: 1px solid #f0c36d;
   background: #fff8eb;

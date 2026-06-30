@@ -6,6 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.schemas import (
     AccountDeleteRequest,
+    CreatePaymentRequest,
+    PaymentOrderResponse,
+    PaymentPackagesResponse,
+    TopUpPackageResponse,
     UsageEventResponse,
     UsageSummaryResponse,
     WalletResponse,
@@ -13,6 +17,15 @@ from app.schemas import (
 )
 from app.services.account_service import hard_delete_user_data
 from app.services.auth_service import AuthContext, get_auth_context
+from app.services.payment_service import (
+    PaymentGatewayError,
+    PaymentOrderNotFoundError,
+    PaymentPackageNotFoundError,
+    create_payment_order,
+    get_payment_gateway_status,
+    get_payment_order,
+    list_top_up_packages,
+)
 from app.services.pricing import CREDITS_PER_RUB
 from app.services.usage_service import get_user_usage_summary, list_user_usage_events
 from app.services.wallet_service import (
@@ -35,7 +48,63 @@ def get_wallet(
         free_turns_remaining=wallet.free_turns_remaining,
         credits_per_rub=CREDITS_PER_RUB,
         starter_credits=STARTER_CREDITS,
+        payment_gateway_status=get_payment_gateway_status(),
     )
+
+
+@router.get("/payments/packages", response_model=PaymentPackagesResponse)
+def get_payment_packages(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> PaymentPackagesResponse:
+    """Return available online top-up packages."""
+    _ = auth
+    packages = list_top_up_packages()
+    return PaymentPackagesResponse(
+        payment_gateway_status=get_payment_gateway_status(),
+        credits_per_rub=CREDITS_PER_RUB,
+        packages=[
+            TopUpPackageResponse(
+                id=package.id,
+                credits=package.credits,
+                amount_rub=float(package.amount_rub),
+                title=package.title,
+            )
+            for package in packages
+        ],
+    )
+
+
+@router.post("/payments", response_model=PaymentOrderResponse, status_code=201)
+def create_payment(
+    payload: CreatePaymentRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> PaymentOrderResponse:
+    """Create an online payment and return a confirmation URL."""
+    try:
+        order = create_payment_order(
+            user_id=auth.user_id,
+            package_id=payload.package_id,
+        )
+    except PaymentPackageNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except PaymentGatewayError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    return PaymentOrderResponse(**order)
+
+
+@router.get("/payments/{order_id}", response_model=PaymentOrderResponse)
+def get_payment(
+    order_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> PaymentOrderResponse:
+    """Return payment status for the authenticated user."""
+    try:
+        order = get_payment_order(order_id=order_id, user_id=auth.user_id)
+    except PaymentOrderNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return PaymentOrderResponse(**order)
 
 
 @router.get("/wallet/transactions", response_model=list[WalletTransactionResponse])

@@ -33,6 +33,9 @@ def make_test_settings(**overrides: object) -> Settings:
         "ops_notify_url": None,
         "ops_token": None,
         "admin_enrichment_model": "gpt-4o-mini",
+        "payment_gateway_enabled": False,
+        "yookassa_shop_id": None,
+        "yookassa_secret_key": None,
     }
     defaults.update(overrides)
     return Settings(**defaults)

@@ -17,6 +17,7 @@ from app.routers import (
     documents,
     labs,
     nutrition,
+    payments,
     profile,
 )
 from app.schemas import HealthResponse
@@ -63,6 +64,7 @@ app.include_router(documents.router, prefix="/api")
 app.include_router(complaints.router, prefix="/api")
 app.include_router(consultations.router, prefix="/api")
 app.include_router(nutrition.router, prefix="/api")
+app.include_router(payments.router, prefix="/api")
 
 
 @app.get("/health", response_model=HealthResponse)

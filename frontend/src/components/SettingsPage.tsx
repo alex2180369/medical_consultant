@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { deleteAccount, logout } from "../api";
 import { AccountBillingPanel } from "./AccountBillingPanel";
@@ -8,6 +8,9 @@ type SettingsTab = "profile" | "billing";
 type SettingsPageProps = {
   email: string;
   name: string;
+  initialTab?: SettingsTab;
+  paymentReturnOrderId?: string | null;
+  onPaymentReturnHandled?: () => void;
   onPrivacy: () => void;
   onAbout: () => void;
   onLegal: () => void;
@@ -18,17 +21,24 @@ type SettingsPageProps = {
 export function SettingsPage({
   email,
   name,
+  initialTab = "profile",
+  paymentReturnOrderId = null,
+  onPaymentReturnHandled,
   onPrivacy,
   onAbout,
   onLegal,
   onLogout,
   onDeleted
 }: SettingsPageProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   async function handleDelete(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,7 +88,10 @@ export function SettingsPage({
       </div>
 
       {activeTab === "billing" ? (
-        <AccountBillingPanel />
+        <AccountBillingPanel
+          paymentReturnOrderId={paymentReturnOrderId}
+          onPaymentReturnHandled={onPaymentReturnHandled}
+        />
       ) : (
         <>
           <div className="settings-block">

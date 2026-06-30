@@ -38,6 +38,9 @@ class Settings:
     ops_notify_url: str | None
     ops_token: str | None
     admin_enrichment_model: str
+    payment_gateway_enabled: bool = False
+    yookassa_shop_id: str | None = None
+    yookassa_secret_key: str | None = None
     nutrition_model: str = "claude-sonnet-4.6"
 
 
@@ -93,4 +96,10 @@ def load_settings() -> Settings:
         admin_enrichment_model=environ.get(
             "ADMIN_ENRICHMENT_MODEL", "gpt-4o-mini"
         ),
+        payment_gateway_enabled=environ.get(
+            "PAYMENT_GATEWAY_ENABLED", "false"
+        ).lower()
+        in {"1", "true", "yes"},
+        yookassa_shop_id=environ.get("YOOKASSA_SHOP_ID"),
+        yookassa_secret_key=environ.get("YOOKASSA_SECRET_KEY"),
     )
