@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from app.database import get_connection
 from app.services.llm_router import LlmTask
-from app.services.pricing import CREDITS_PER_RUB, calculate_usage_cost
+from app.services.pricing import CREDITS_PER_RUB, calculate_usage_cost, calculate_yandex_ocr_cost
 from app.services.wallet_service import (
     InsufficientCreditsError,
     apply_usage_charge,
@@ -206,6 +206,99 @@ def log_llm_usage(
     )
 
 
+def log_ocr_usage(
+    *,
+    context: UsageContext,
+    provider: str,
+    model: str,
+    page_count: int,
+    credits_per_page: int,
+) -> UsageLogResult | None:
+    """Persist a Yandex OCR usage event and charge the wallet when billable."""
+    provider_cost, estimated_credits = calculate_yandex_ocr_cost(
+        page_count=page_count,
+        credits_per_page=credits_per_page,
+    )
+    if not context.billable or context.cache_hit:
+        estimated_credits = 0
+
+    pages = max(page_count, 1)
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            INSERT INTO llm_usage_events (
+                user_id,
+                consultation_id,
+                complaint_id,
+                document_id,
+                operation_type,
+                llm_task,
+                provider,
+                model,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                provider_cost_rub,
+                estimated_credits,
+                charged_credits,
+                cache_hit,
+                is_charged
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, FALSE)
+            RETURNING id
+            """,
+            (
+                context.user_id,
+                context.consultation_id,
+                context.complaint_id,
+                context.document_id,
+                context.operation_type,
+                "ocr",
+                provider,
+                model,
+                pages,
+                0,
+                pages,
+                provider_cost,
+                estimated_credits,
+                context.cache_hit,
+            ),
+        ).fetchone()
+
+    event_id = int(row["id"])
+    if not context.user_id:
+        return None
+
+    charge = apply_usage_charge(
+        user_id=context.user_id,
+        usage_event_id=event_id,
+        estimated_credits=estimated_credits,
+        billable=context.billable and not context.cache_hit,
+    )
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE llm_usage_events
+            SET charged_credits = %s
+            WHERE id = %s
+            """,
+            (charge.charged_credits, event_id),
+        )
+
+    return UsageLogResult(
+        event_id=event_id,
+        estimated_credits=charge.estimated_credits,
+        charged_credits=charge.charged_credits,
+        balance_remaining=charge.balance_remaining,
+        free_turns_remaining=charge.free_turns_remaining,
+        used_free_turn=charge.used_free_turn,
+        is_charged=charge.is_charged,
+        total_tokens=pages,
+        model=model,
+    )
+
+
 def get_user_usage_summary(user_id: str) -> UsageSummary:
     """Return aggregated usage metrics for one user."""
     with get_connection() as connection:
@@ -294,5 +387,6 @@ __all__ = [
     "get_user_usage_summary",
     "list_user_usage_events",
     "log_llm_usage",
+    "log_ocr_usage",
     "prepare_billable_request",
 ]

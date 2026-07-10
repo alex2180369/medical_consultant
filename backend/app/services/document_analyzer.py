@@ -1,6 +1,9 @@
 """Extract text from uploaded medical documents for consultation context."""
 
+from __future__ import annotations
+
 import base64
+import logging
 import mimetypes
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +12,15 @@ from app.config import Settings, load_settings
 from app.database import get_connection
 from app.services.llm_client import ChatMessage, chat_completion
 from app.services.llm_router import LlmTask
-from app.services.usage_service import UsageContext
+from app.services.usage_service import UsageContext, log_ocr_usage, prepare_billable_request
+from app.services.yandex_ocr import (
+    MIN_USEFUL_TEXT_CHARS,
+    YandexOcrError,
+    is_yandex_ocr_configured,
+    recognize_document,
+)
+
+logger = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 TEXT_EXTENSIONS = {".txt"}
@@ -78,7 +89,33 @@ def _image_mime_type(path: Path, content_type: str) -> str:
     return guessed or "image/jpeg"
 
 
-def _ocr_image(
+def _ocr_with_yandex(
+    path: Path,
+    settings: Settings,
+    *,
+    user_id: str | None = None,
+    document_id: int | None = None,
+) -> str:
+    """Run Yandex Vision OCR and bill by page count."""
+    context = UsageContext(
+        user_id=user_id,
+        operation_type="ocr",
+        document_id=document_id,
+        task=LlmTask.IMAGING,
+    )
+    prepare_billable_request(context)
+    result = recognize_document(path, settings)
+    log_ocr_usage(
+        context=context,
+        provider=result.provider,
+        model=result.model,
+        page_count=max(result.page_count, 1),
+        credits_per_page=settings.yandex_ocr_credits_per_page,
+    )
+    return result.text.strip()
+
+
+def _ocr_image_llm(
     path: Path,
     content_type: str,
     settings: Settings,
@@ -86,7 +123,7 @@ def _ocr_image(
     user_id: str | None = None,
     document_id: int | None = None,
 ) -> str:
-    """Run OCR on an image through the imaging model."""
+    """Run OCR on an image through the imaging model (fallback)."""
     if not settings.proxyapi_api_key:
         raise RuntimeError("PROXYAPI_API_KEY is not configured.")
 
@@ -121,6 +158,65 @@ def _ocr_image(
     return completion.content.strip()
 
 
+def _ocr_document(
+    path: Path,
+    content_type: str,
+    settings: Settings,
+    *,
+    user_id: str | None = None,
+    document_id: int | None = None,
+    allow_llm_fallback: bool = True,
+) -> str:
+    """Prefer Yandex Vision OCR; optionally fall back to vision LLM for images."""
+    yandex_error: Exception | None = None
+
+    if is_yandex_ocr_configured(settings):
+        try:
+            text = _ocr_with_yandex(
+                path,
+                settings,
+                user_id=user_id,
+                document_id=document_id,
+            )
+            if len(text) >= MIN_USEFUL_TEXT_CHARS:
+                return text
+            logger.info(
+                "Yandex OCR returned weak text (%s chars) for %s",
+                len(text),
+                path.name,
+            )
+            if text and not allow_llm_fallback:
+                return text
+        except YandexOcrError as error:
+            yandex_error = error
+            logger.warning("Yandex OCR failed for %s: %s", path.name, error)
+
+    suffix = path.suffix.lower()
+    if allow_llm_fallback and suffix in IMAGE_EXTENSIONS:
+        try:
+            return _ocr_image_llm(
+                path,
+                content_type,
+                settings,
+                user_id=user_id,
+                document_id=document_id,
+            )
+        except RuntimeError:
+            if yandex_error is not None:
+                raise yandex_error from None
+            raise
+
+    if yandex_error is not None:
+        raise yandex_error
+
+    if not is_yandex_ocr_configured(settings) and not settings.proxyapi_api_key:
+        raise RuntimeError(
+            "OCR is not configured. Set YANDEX_OCR_API_KEY or PROXYAPI_API_KEY."
+        )
+
+    raise RuntimeError("OCR did not return usable text.")
+
+
 def extract_document_text(
     path: Path,
     *,
@@ -141,21 +237,43 @@ def extract_document_text(
             status = "completed" if extracted.strip() else "failed"
         elif suffix in PDF_EXTENSIONS:
             extracted = _read_pdf_text(path)
-            if not extracted.strip():
-                extracted = (
-                    "Текст из PDF не извлечён автоматически. "
-                    "Если это скан, загрузите фото или JPG/PNG."
-                )
-                status = "failed"
-            else:
+            if extracted.strip():
                 status = "completed"
+            else:
+                # Scanned PDF: try Yandex OCR (supports PDF natively).
+                try:
+                    extracted = _ocr_document(
+                        path,
+                        content_type or "application/pdf",
+                        settings,
+                        user_id=user_id,
+                        document_id=document_id,
+                        allow_llm_fallback=False,
+                    )
+                    status = "completed" if extracted.strip() else "failed"
+                except RuntimeError as error:
+                    message = str(error)
+                    if "not configured" in message.lower() or "API_KEY" in message:
+                        extracted = (
+                            "Текст из PDF не извлечён автоматически. "
+                            "Для сканов настройте YANDEX_OCR_API_KEY "
+                            "или загрузите фото JPG/PNG."
+                        )
+                        status = "no_api_key"
+                    else:
+                        extracted = (
+                            "Текст из PDF не извлечён автоматически. "
+                            "Если это скан, загрузите фото или JPG/PNG."
+                        )
+                        status = "failed"
         elif suffix in IMAGE_EXTENSIONS:
-            extracted = _ocr_image(
+            extracted = _ocr_document(
                 path,
                 content_type,
                 settings,
                 user_id=user_id,
                 document_id=document_id,
+                allow_llm_fallback=True,
             )
             status = "completed" if extracted.strip() else "failed"
         else:
@@ -166,13 +284,21 @@ def extract_document_text(
             )
     except RuntimeError as error:
         message = str(error)
-        if "PROXYAPI_API_KEY" in message and description:
-            extracted = f"{description}\n\n(OCR недоступен без PROXYAPI_API_KEY.)"
+        missing_key = (
+            "API_KEY" in message
+            or "not configured" in message.lower()
+            or "YANDEX_OCR" in message
+        )
+        if missing_key and description:
+            extracted = (
+                f"{description}\n\n"
+                "(OCR недоступен: задайте YANDEX_OCR_API_KEY или PROXYAPI_API_KEY.)"
+            )
         else:
             extracted = description or message
         return DocumentExtractionResult(
             extracted_text=_truncate(extracted, MAX_STORED_TEXT),
-            analysis_status="no_api_key" if "API key" in message else "failed",
+            analysis_status="no_api_key" if missing_key else "failed",
         )
     except Exception as error:
         fallback = description or f"Не удалось разобрать файл: {error}"

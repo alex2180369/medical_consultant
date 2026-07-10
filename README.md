@@ -59,7 +59,8 @@ Nginx (хост) ──► frontend:8080  (статика + proxy /api → backe
                  ├── PostgreSQL 16  (users, profiles, medical data)
                  ├── Volume uploads  (файлы документов)
                  ├── aitunnel.ru     (основные LLM)
-                 └── proxyapi.ru     (изображения / OCR)
+                 └── Yandex Vision OCR (документы)
+                 └── proxyapi.ru     (fallback OCR / изображения)
 ```
 
 **Docker Compose** поднимает три сервиса:
@@ -263,7 +264,8 @@ Backend выбирает модель по типу задачи. Ключи и 
 | Нутрициолог, меню | `NUTRITION_MODEL` | `claude-sonnet-4.6` | aitunnel.ru |
 | Сложные симптомы | `COMPLEX_SYMPTOMS_MODEL` | `deepseek-r1-0528` | aitunnel.ru |
 | Углублённый разбор, сравнение мнений | `REVIEW_MODEL` | `claude-opus-4-7` | aitunnel.ru |
-| Изображения, OCR | `IMAGING_MODEL` | `gpt-4o-mini` | proxyapi.ru |
+| Изображения (fallback OCR) | `IMAGING_MODEL` | `gpt-4o-mini` | proxyapi.ru |
+| OCR документов (основной) | Yandex Vision | `page` | yandex.cloud |
 
 **Автовыбор «сложного случая»** — по эвристике (длинный текст, несколько симптомов, хронические заболевания в профиле) или вручную через чекбокс в UI.
 
@@ -332,9 +334,12 @@ cp .env.example .env
 
 | Переменная | Описание |
 |------------|----------|
-| `PROXYAPI_API_KEY` | Ключ proxyapi.ru (изображения) |
+| `PROXYAPI_API_KEY` | Ключ proxyapi.ru (fallback OCR / изображения) |
+| `YANDEX_OCR_API_KEY` | API-ключ сервисного аккаунта Yandex Vision OCR |
+| `YANDEX_OCR_FOLDER_ID` | Folder ID в Yandex Cloud (рекомендуется) |
+| `YANDEX_OCR_CREDITS_PER_PAGE` | Списание кредитов за страницу OCR (по умолчанию `2`) |
 | `SYMPTOMS_MODEL`, `MEDICATIONS_MODEL`, … | Переопределение моделей |
-| `AITUNNEL_BASE_URL`, `PROXYAPI_BASE_URL` | Base URL провайдеров |
+| `AITUNNEL_BASE_URL`, `PROXYAPI_BASE_URL`, `YANDEX_OCR_BASE_URL` | Base URL провайдеров |
 
 ### Прочее
 

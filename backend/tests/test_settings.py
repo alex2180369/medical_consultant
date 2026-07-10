@@ -36,6 +36,10 @@ def make_test_settings(**overrides: object) -> Settings:
         "payment_gateway_enabled": False,
         "yookassa_shop_id": None,
         "yookassa_secret_key": None,
+        "yandex_ocr_api_key": None,
+        "yandex_ocr_folder_id": None,
+        "yandex_ocr_base_url": "https://ocr.api.cloud.yandex.net/ocr/v1",
+        "yandex_ocr_credits_per_page": 2,
     }
     defaults.update(overrides)
     return Settings(**defaults)

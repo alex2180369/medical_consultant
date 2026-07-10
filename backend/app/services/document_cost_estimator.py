@@ -12,7 +12,8 @@ from app.services.document_analyzer import (
     TEXT_EXTENSIONS,
 )
 from app.services.llm_router import LlmTask, resolve_model_route
-from app.services.pricing import calculate_usage_cost
+from app.services.pricing import calculate_usage_cost, calculate_yandex_ocr_cost
+from app.services.yandex_ocr import is_yandex_ocr_configured
 
 HEAVY_ESTIMATE_CREDITS = 12
 HEAVY_IMAGE_BYTES = 2 * 1024 * 1024
@@ -35,7 +36,7 @@ class DocumentCostEstimate:
     model: str | None = None
 
 
-def _estimate_ocr_credits(settings: Settings, *, prompt_tokens: int) -> tuple[int, str]:
+def _estimate_llm_ocr_credits(settings: Settings, *, prompt_tokens: int) -> tuple[int, str]:
     route = resolve_model_route(LlmTask.IMAGING, settings)
     _, credits = calculate_usage_cost(
         model=route.model,
@@ -44,6 +45,29 @@ def _estimate_ocr_credits(settings: Settings, *, prompt_tokens: int) -> tuple[in
         completion_tokens=OCR_COMPLETION_TOKENS,
     )
     return credits, route.model
+
+
+def _estimate_yandex_ocr_credits(
+    settings: Settings,
+    *,
+    page_count: int,
+) -> tuple[int, str]:
+    _, credits = calculate_yandex_ocr_cost(
+        page_count=page_count,
+        credits_per_page=settings.yandex_ocr_credits_per_page,
+    )
+    return credits, "yandex-vision-ocr"
+
+
+def _estimate_ocr_credits(
+    settings: Settings,
+    *,
+    page_count: int,
+    prompt_tokens: int,
+) -> tuple[int, str]:
+    if is_yandex_ocr_configured(settings):
+        return _estimate_yandex_ocr_credits(settings, page_count=page_count)
+    return _estimate_llm_ocr_credits(settings, prompt_tokens=prompt_tokens)
 
 
 def _pdf_page_count(path: Path) -> int:
@@ -105,7 +129,11 @@ def estimate_document_cost(
             )
 
         prompt_tokens = OCR_BASE_PROMPT_TOKENS + pages * 350
-        credits, model = _estimate_ocr_credits(settings, prompt_tokens=prompt_tokens)
+        credits, model = _estimate_ocr_credits(
+            settings,
+            page_count=pages,
+            prompt_tokens=prompt_tokens,
+        )
         requires_confirmation = credits >= HEAVY_ESTIMATE_CREDITS or pages >= HEAVY_PDF_PAGES
         warning = None
         if requires_confirmation:
@@ -125,7 +153,11 @@ def estimate_document_cost(
 
     if suffix in IMAGE_EXTENSIONS:
         prompt_tokens = OCR_BASE_PROMPT_TOKENS + max(file_size // 900, 1)
-        credits, model = _estimate_ocr_credits(settings, prompt_tokens=prompt_tokens)
+        credits, model = _estimate_ocr_credits(
+            settings,
+            page_count=1,
+            prompt_tokens=prompt_tokens,
+        )
         requires_confirmation = (
             credits >= HEAVY_ESTIMATE_CREDITS or file_size >= HEAVY_IMAGE_BYTES
         )
@@ -141,7 +173,7 @@ def estimate_document_cost(
             is_billable=True,
             analysis_type="ocr",
             warning_message=warning,
-            page_count=None,
+            page_count=1,
             file_size_bytes=file_size,
             model=model,
         )

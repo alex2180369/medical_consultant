@@ -526,7 +526,7 @@ function App() {
         );
       } else if (uploaded.analysis_status === "no_api_key") {
         setStatus(
-          "Файл сохранён. Для OCR изображений добавьте PROXYAPI_API_KEY в `.env`."
+          "Файл сохранён. Для OCR задайте YANDEX_OCR_API_KEY (или PROXYAPI_API_KEY как запасной вариант) в `.env`."
         );
       } else {
         setStatus(

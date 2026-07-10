@@ -106,3 +106,21 @@ def calculate_usage_cost(
         ),
     )
     return provider_cost, estimated_credits
+
+
+# Approximate Yandex Vision OCR list price (~1.4 RUB / page) for usage logs.
+YANDEX_OCR_PROVIDER_COST_PER_PAGE_RUB = Decimal("1.40")
+
+
+def calculate_yandex_ocr_cost(
+    *,
+    page_count: int,
+    credits_per_page: int,
+) -> tuple[Decimal, int]:
+    """Return provider cost and credits for Yandex Vision OCR pages."""
+    pages = max(page_count, 1)
+    provider_cost = (YANDEX_OCR_PROVIDER_COST_PER_PAGE_RUB * pages).quantize(
+        Decimal("0.000001")
+    )
+    estimated_credits = max(MIN_CHARGE_CREDITS, pages * max(credits_per_page, 1))
+    return provider_cost, estimated_credits

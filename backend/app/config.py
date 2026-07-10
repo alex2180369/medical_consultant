@@ -42,6 +42,10 @@ class Settings:
     yookassa_shop_id: str | None = None
     yookassa_secret_key: str | None = None
     nutrition_model: str = "claude-sonnet-4.6"
+    yandex_ocr_api_key: str | None = None
+    yandex_ocr_folder_id: str | None = None
+    yandex_ocr_base_url: str = "https://ocr.api.cloud.yandex.net/ocr/v1"
+    yandex_ocr_credits_per_page: int = 2
 
 
 def load_settings() -> Settings:
@@ -102,4 +106,13 @@ def load_settings() -> Settings:
         in {"1", "true", "yes"},
         yookassa_shop_id=environ.get("YOOKASSA_SHOP_ID"),
         yookassa_secret_key=environ.get("YOOKASSA_SECRET_KEY"),
+        yandex_ocr_api_key=environ.get("YANDEX_OCR_API_KEY"),
+        yandex_ocr_folder_id=environ.get("YANDEX_OCR_FOLDER_ID"),
+        yandex_ocr_base_url=environ.get(
+            "YANDEX_OCR_BASE_URL",
+            "https://ocr.api.cloud.yandex.net/ocr/v1",
+        ),
+        yandex_ocr_credits_per_page=int(
+            environ.get("YANDEX_OCR_CREDITS_PER_PAGE", "2")
+        ),
     )
