@@ -20,6 +20,7 @@ import {
   saveProfile,
   sendConsultationChat,
   estimateDocumentCost,
+  deleteDocument,
   uploadDocument
 } from "./api";
 import { LoginPage } from "./components/auth/LoginPage";
@@ -35,6 +36,11 @@ import {
 import { SettingsPage } from "./components/SettingsPage";
 import { logout } from "./api";
 import { clearAccessToken, getAccessToken } from "./lib/auth";
+import {
+  isRotatableImageFile,
+  normalizeImageOrientation,
+  rotateImageFile
+} from "./lib/documentImage";
 import {
   formatAssistantReply,
   OpinionComparisonView
@@ -196,6 +202,10 @@ function App() {
   const [complaint, setComplaint] = useState<ComplaintCreate>(emptyComplaint);
   const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentPreviewUrl, setDocumentPreviewUrl] = useState<string | null>(
+    null
+  );
+  const [isPreparingDocument, setIsPreparingDocument] = useState(false);
   const [documentDescription, setDocumentDescription] = useState("");
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const documentInputRef = useRef<HTMLInputElement>(null);
@@ -219,6 +229,9 @@ function App() {
   const [freeTurnsRemaining, setFreeTurnsRemaining] = useState<number | null>(null);
   const [documentCostEstimate, setDocumentCostEstimate] =
     useState<DocumentCostEstimate | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<number | null>(
+    null
+  );
   const [receiptComplaintId, setReceiptComplaintId] = useState<number | null>(null);
   const [showChatReceipt, setShowChatReceipt] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"profile" | "billing">(
@@ -227,6 +240,19 @@ function App() {
   const [paymentReturnOrderId, setPaymentReturnOrderId] = useState<string | null>(
     null
   );
+
+  useEffect(() => {
+    if (!documentFile || !isRotatableImageFile(documentFile)) {
+      setDocumentPreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(documentFile);
+    setDocumentPreviewUrl(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [documentFile]);
 
   async function loadWorkspaceData() {
     const [loadedProfile, loadedLabs, loadedComplaints, loadedDocuments, wallet] =
@@ -486,6 +512,29 @@ function App() {
     await submitDocument();
   }
 
+  async function handleDocumentDelete(documentId: number, filename: string) {
+    const confirmed = window.confirm(
+      `Удалить файл «${filename}»? Он больше не будет доступен ассистенту.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingDocumentId(documentId);
+    setStatus("Удаляем файл...");
+    try {
+      await deleteDocument(documentId);
+      setDocuments(await listDocuments());
+      setStatus(`Файл «${filename}» удалён.`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Не удалось удалить файл.";
+      setStatus(message);
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  }
+
   async function submitDocument(confirmHighCost = false) {
     if (!documentFile) {
       setStatus("Выберите или перетащите файл анализа/снимка.");
@@ -516,6 +565,7 @@ function App() {
       setDocuments(await listDocuments());
       setDocumentFile(null);
       setDocumentDescription("");
+      setDocumentCostEstimate(null);
       if (documentInputRef.current) {
         documentInputRef.current.value = "";
       }
@@ -540,30 +590,118 @@ function App() {
     }
   }
 
+  async function selectDocumentFile(file: File) {
+    setDocumentCostEstimate(null);
+    if (!isRotatableImageFile(file)) {
+      setDocumentFile(file);
+      return;
+    }
+
+    setIsPreparingDocument(true);
+    setStatus("Подготавливаем изображение...");
+    try {
+      const normalized = await normalizeImageOrientation(file);
+      setDocumentFile(normalized);
+      setStatus("");
+    } catch {
+      setDocumentFile(file);
+      setStatus("Превью без автоповорота EXIF — при необходимости поверните вручную.");
+    } finally {
+      setIsPreparingDocument(false);
+    }
+  }
+
+  async function handleDocumentRotate(direction: 1 | -1) {
+    if (!documentFile || !isRotatableImageFile(documentFile)) {
+      return;
+    }
+
+    setIsPreparingDocument(true);
+    setStatus("Поворачиваем изображение...");
+    try {
+      const rotated = await rotateImageFile(documentFile, direction);
+      setDocumentFile(rotated);
+      setDocumentCostEstimate(null);
+      setStatus("");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Не удалось повернуть изображение.";
+      setStatus(message);
+    } finally {
+      setIsPreparingDocument(false);
+    }
+  }
+
   function handleDocumentDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsDraggingDocument(false);
     const file = event.dataTransfer.files.item(0);
     if (file) {
-      setDocumentFile(file);
-      setDocumentCostEstimate(null);
+      void selectDocumentFile(file);
     }
   }
 
   function handleDocumentInputChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
-    setDocumentFile(file);
+    if (file) {
+      void selectDocumentFile(file);
+      return;
+    }
+    setDocumentFile(null);
     setDocumentCostEstimate(null);
   }
 
   function renderDocumentUploadInstructions() {
+    const canRotate = Boolean(
+      documentFile && isRotatableImageFile(documentFile)
+    );
+
     return (
       <div className="upload-pending-instructions">
         <p className="upload-pending-title">
           Файл выбран: <strong>{documentFile?.name}</strong>
         </p>
+        {canRotate && documentPreviewUrl && (
+          <div className="document-preview">
+            <img
+              src={documentPreviewUrl}
+              alt={`Превью: ${documentFile?.name ?? "документ"}`}
+              className="document-preview-image"
+            />
+            <div className="document-preview-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={isPreparingDocument}
+                onClick={() => void handleDocumentRotate(-1)}
+              >
+                Повернуть влево
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={isPreparingDocument}
+                onClick={() => void handleDocumentRotate(1)}
+              >
+                Повернуть вправо
+              </button>
+            </div>
+            <p className="muted document-preview-hint">
+              Проверьте ориентацию: текст должен читаться нормально, иначе OCR
+              может ошибиться.
+            </p>
+          </div>
+        )}
+        {!canRotate && documentFile && (
+          <p className="muted">
+            Для PDF и TXT превью поворота нет — загружается исходный файл.
+          </p>
+        )}
         <p>Для продолжения загрузки необходимо:</p>
         <ul>
+          <li>при необходимости повернуть изображение;</li>
           <li>заполнить таблицу ниже;</li>
           <li>добавить описание файла;</li>
           <li>нажать кнопку «Загрузить файл».</li>
@@ -571,6 +709,7 @@ function App() {
         <button
           type="button"
           className="secondary-button"
+          disabled={isPreparingDocument}
           onClick={() => documentInputRef.current?.click()}
         >
           Выбрать другой файл
@@ -887,7 +1026,9 @@ function App() {
               placeholder="ОАК от 20.05, рентген грудной клетки, УЗИ..."
             />
           </label>
-          <button type="submit">Загрузить файл</button>
+          <button type="submit" disabled={isPreparingDocument || !documentFile}>
+            {isPreparingDocument ? "Подготовка..." : "Загрузить файл"}
+          </button>
           {documentCostEstimate && (
             <div className="document-cost-warning">
               <p>
@@ -929,7 +1070,21 @@ function App() {
               )}
               {documents.slice(0, 8).map((item) => (
                 <article key={item.id} className="lab-item">
-                  <strong>{item.filename}</strong>
+                  <div className="lab-item-header">
+                    <strong>{item.filename}</strong>
+                    <button
+                      type="button"
+                      className="lab-item-delete"
+                      disabled={deletingDocumentId === item.id}
+                      onClick={() =>
+                        void handleDocumentDelete(item.id, item.filename)
+                      }
+                    >
+                      {deletingDocumentId === item.id
+                        ? "Удаление..."
+                        : "Удалить"}
+                    </button>
+                  </div>
                   <span>{item.description || "Без описания"}</span>
                   <small>
                     {item.analysis_status === "completed"

@@ -149,3 +149,34 @@ def upload_document(
         ).fetchone()
 
     return DocumentRecord(**dict(row))
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(
+    document_id: int,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> None:
+    """Delete an uploaded document owned by the current user."""
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, path
+            FROM documents
+            WHERE id = %s AND user_id = %s
+            """,
+            (document_id, auth.user_id),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Документ не найден.",
+            )
+
+        file_path = Path(str(row["path"]))
+        connection.execute(
+            "DELETE FROM documents WHERE id = %s AND user_id = %s",
+            (document_id, auth.user_id),
+        )
+
+    if file_path.exists() and UPLOAD_DIR.resolve() in file_path.resolve().parents:
+        file_path.unlink(missing_ok=True)

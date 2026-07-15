@@ -446,6 +446,12 @@ export function listDocuments(): Promise<DocumentRecord[]> {
   return request<DocumentRecord[]>("/api/documents");
 }
 
+export function deleteDocument(documentId: number): Promise<void> {
+  return request<void>(`/api/documents/${documentId}`, {
+    method: "DELETE"
+  });
+}
+
 export async function estimateDocumentCost(file: File): Promise<DocumentCostEstimate> {
   const formData = new FormData();
   formData.append("file", file);
