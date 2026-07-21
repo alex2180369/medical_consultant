@@ -7,6 +7,10 @@ from datetime import date
 from typing import Literal
 
 from app.config import Settings, load_settings
+from app.services.ephemeral_session_service import (
+    complete_consultation_without_history,
+    is_ephemeral_dialog_user,
+)
 from app.database import get_connection
 from app.schemas import ComplaintCreate, ComplaintRecord, MedicalProfile
 from app.services.document_analyzer import format_documents_for_context
@@ -150,7 +154,7 @@ def _extract_json(content: str) -> dict[str, object]:
         if isinstance(parsed, dict):
             return parsed
 
-    raise ValueError("LLM response is not valid JSON.")
+    raise ValueError("Некорректный ответ модели. Попробуйте ещё раз.")
 
 
 def _create_consultation(
@@ -187,10 +191,10 @@ def _load_consultation_meta(consultation_id: int, user_id: str) -> dict[str, str
         ).fetchone()
 
     if row is None:
-        raise ValueError("Consultation not found.")
+        raise ValueError("Консультация не найдена.")
 
     if row["status"] != "active":
-        raise ValueError("Consultation is already completed.")
+        raise ValueError("Консультация уже завершена. Нажмите «Новый диалог» или отправьте новое сообщение.")
 
     return dict(row)
 
@@ -410,14 +414,23 @@ def continue_consultation(
     cleaned_message = message.strip()
 
     if not cleaned_message:
-        raise ValueError("Message must not be empty.")
+        raise ValueError("Сообщение не должно быть пустым.")
 
     if consultation_id is None:
         if occurred_at is None:
-            raise ValueError("occurred_at is required for a new consultation.")
+            raise ValueError("Укажите дату начала консультации.")
         consultation_id = _create_consultation(user_id, occurred_at, "", notes)
     else:
-        _load_consultation_meta(consultation_id, user_id)
+        try:
+            _load_consultation_meta(consultation_id, user_id)
+        except ValueError as error:
+            # После conclusion фронт может ещё держать старый id — начинаем новую сессию.
+            if "уже завершена" not in str(error):
+                raise
+            start_date = occurred_at or date.today()
+            consultation_id = _create_consultation(
+                user_id, start_date, "", notes
+            )
 
     from app.services.pii_filter import PII_WARNING, detect_sensitive_data
 
@@ -566,6 +579,20 @@ def continue_consultation(
                 ai_doctor_questions=analysis.ai_doctor_questions,
                 ai_urgency=analysis.ai_urgency,
             )
+
+    if is_ephemeral_dialog_user(user_id):
+        complete_consultation_without_history(
+            consultation_id=consultation_id,
+            user_id=user_id,
+        )
+        return ConsultationTurnResult(
+            consultation_id=consultation_id,
+            reply=reply,
+            phase="conclusion",
+            ai_status=analysis.ai_status,
+            complaint=None,
+            usage=turn_usage,
+        )
 
     complaint_record = _save_complaint_from_consultation(
         user_id,

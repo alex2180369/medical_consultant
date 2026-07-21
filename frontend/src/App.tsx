@@ -15,6 +15,7 @@ import {
   getSession,
   getWallet,
   listComplaints,
+  startNewDialog,
   listDocuments,
   listLabs,
   saveProfile,
@@ -357,10 +358,23 @@ function App() {
       return;
     }
 
-    scrollTarget.scrollTo({
-      top: scrollTarget.scrollHeight,
-      behavior: "smooth"
+    const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+      scrollTarget.scrollTo({
+        top: scrollTarget.scrollHeight,
+        behavior
+      });
+    };
+
+    scrollToBottom("auto");
+    const rafId = window.requestAnimationFrame(() => {
+      scrollToBottom("smooth");
     });
+    const timeoutId = window.setTimeout(() => scrollToBottom("smooth"), 80);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(timeoutId);
+    };
   }, [chatMessages, isAnalyzingComplaint]);
 
   function resetComplaintChat() {
@@ -453,6 +467,14 @@ function App() {
         } else {
           setStatus("Консультация завершена, но ИИ-оценка не выполнена.");
         }
+      } else if (turn.phase === "conclusion") {
+        setConsultationId(null);
+        setIsComplaintBranchesOpen(false);
+        setStatus(
+          turn.ai_status === "completed"
+            ? "Консультация завершена. Нажмите «Новый диалог», чтобы начать заново."
+            : "Консультация завершена, но ИИ-оценка не выполнена."
+        );
       } else if (turn.ai_status === "no_api_key") {
         setStatus("Добавьте AITUNNEL_API_KEY в `.env` для ответов ассистента.");
       } else if (turn.ai_status === "failed") {
@@ -465,6 +487,12 @@ function App() {
         error instanceof Error
           ? error.message
           : "Не удалось получить оценку. Попробуйте отправить сообщение ещё раз.";
+      if (
+        message.includes("уже завершена") ||
+        message.includes("already completed")
+      ) {
+        setConsultationId(null);
+      }
       setChatMessages((current) => [
         ...current,
         {
@@ -752,7 +780,31 @@ function App() {
     setActivePage(page);
   }
 
-  function startNewChat() {
+  async function startNewChat() {
+    const isEphemeral = session?.user.name === "Апрель";
+    if (isEphemeral) {
+      try {
+        setStatus("Создаём новый диалог...");
+        const result = await startNewDialog();
+        setProfile({
+          ...emptyProfile,
+          ...result.profile
+        });
+        setComplaints([]);
+        setDoctorFeedbackDrafts({});
+        setWalletBalance(result.credits_balance);
+        setFreeTurnsRemaining(result.free_turns_remaining);
+        setStatus("Новый диалог создан. Анкета обнулена, баланс 300 💎.");
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Не удалось создать новый диалог.";
+        setStatus(message);
+        return;
+      }
+    }
+
     resetComplaintChat();
     navigateTo("chat");
   }
@@ -849,6 +901,7 @@ function App() {
               </div>
             </div>
           )}
+          <div className="chat-scroll-anchor" aria-hidden="true" />
         </div>
 
         <details

@@ -8,12 +8,14 @@ from app.schemas import (
     ConsultationChatRequest,
     ConsultationChatResponse,
     ConsultationReceiptResponse,
+    NewDialogResponse,
     ReceiptLineResponse,
     TurnUsageInfo,
 )
 from app.services.auth_service import AuthContext, get_auth_context
 from app.services.billing_errors import http_error_for_insufficient_credits
 from app.services.consultation_service import continue_consultation
+from app.services.ephemeral_session_service import start_new_ephemeral_dialog
 from app.services.receipt_service import ReceiptNotFoundError, get_consultation_receipt
 from app.services.wallet_service import InsufficientCreditsError
 
@@ -43,6 +45,31 @@ def _receipt_to_response(receipt) -> ConsultationReceiptResponse:
             for line in receipt.lines
         ],
         generated_at=receipt.generated_at,
+    )
+
+
+
+
+@router.post("/new-dialog", response_model=NewDialogResponse)
+def start_new_dialog(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> NewDialogResponse:
+    """
+    Start a fresh dialog for ephemeral users (e.g. «Апрель»).
+
+    Deletes the previous dialog and history, resets the health questionnaire,
+    and restores the non-burnable dialog balance.
+    """
+    try:
+        result = start_new_ephemeral_dialog(auth.user_id)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+
+    return NewDialogResponse(
+        message="Новый диалог создан.",
+        credits_balance=result.wallet.credits_balance,
+        free_turns_remaining=result.wallet.free_turns_remaining,
+        profile=result.profile,
     )
 
 

@@ -144,6 +144,15 @@ class MedicalProfile(BaseModel):
     updated_at: datetime | None = None
 
 
+class NewDialogResponse(BaseModel):
+    """Result of starting a fresh ephemeral dialog session."""
+
+    message: str
+    credits_balance: int
+    free_turns_remaining: int
+    profile: MedicalProfile
+
+
 class LabResultCreate(BaseModel):
     """Laboratory marker submitted by the user."""
 

@@ -420,6 +420,19 @@ export function compareOpinions(
   });
 }
 
+export type NewDialogResponse = {
+  message: string;
+  credits_balance: number;
+  free_turns_remaining: number;
+  profile: MedicalProfile;
+};
+
+export function startNewDialog(): Promise<NewDialogResponse> {
+  return request<NewDialogResponse>("/api/consultations/new-dialog", {
+    method: "POST"
+  });
+}
+
 export function sendConsultationChat(
   payload: ConsultationChatRequest
 ): Promise<ConsultationChatResponse> {

@@ -342,6 +342,53 @@ def _mark_usage_charged(
         )
 
 
+def set_wallet_balance(
+    *,
+    user_id: str,
+    credits: int,
+    reason: str,
+    reference_id: str | None = None,
+) -> WalletSnapshot:
+    """Set wallet balance to an absolute credit amount and log the delta."""
+    if credits < 0:
+        raise ValueError("Баланс не может быть отрицательным.")
+
+    wallet = get_wallet(user_id)
+    delta = credits - wallet.credits_balance
+    if delta == 0:
+        return wallet
+
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            UPDATE user_wallets
+            SET credits_balance = %s,
+                updated_at = NOW()
+            WHERE user_id = %s
+            RETURNING credits_balance, free_turns_remaining
+            """,
+            (credits, user_id),
+        ).fetchone()
+        connection.execute(
+            """
+            INSERT INTO wallet_transactions (
+                user_id,
+                delta_credits,
+                reason,
+                reference_id
+            )
+            VALUES (%s, %s, %s, %s)
+            """,
+            (user_id, delta, reason, reference_id),
+        )
+
+    return WalletSnapshot(
+        user_id=user_id,
+        credits_balance=int(row["credits_balance"]),
+        free_turns_remaining=int(row["free_turns_remaining"]),
+    )
+
+
 def backfill_wallets_for_approved_users() -> None:
     """Create wallets for approved users and grant missing welcome bonuses."""
     with get_connection() as connection:

@@ -207,6 +207,7 @@ Endpoints готовы, но для отправки писем нужен **SMT
 | `POST` | `/api/complaints/{id}/compare-opinions` | JWT | Сравнение с мнением врача |
 | `POST` | `/api/complaints/{id}/review` | JWT | Углублённый разбор |
 | `POST` | `/api/consultations/chat` | JWT | Сообщение в чат консультации |
+| `POST` | `/api/consultations/new-dialog` | JWT | Новый диалог для «Апрель»: удаляет историю, сбрасывает анкету, баланс = 300 |
 
 ### Nutrition
 
