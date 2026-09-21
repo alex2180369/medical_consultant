@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.database import ensure_user_profile, get_connection
 from app.services.payment_service import (
+    YOOKASSA_API_URL,
     PaymentGatewayError,
     complete_payment_order,
     create_payment_order,
@@ -112,8 +113,10 @@ def test_create_payment_order_returns_confirmation_url(
     assert payload["confirmation_url"] == "https://pay.yookassa.ru/confirm"
 
 
-def test_yookassa_webhook_credits_wallet_once(auth_client: TestClient) -> None:
-    """Successful webhook should credit the wallet exactly once."""
+def test_yookassa_webhook_credited_only_when_enabled_and_verified(
+    auth_client: TestClient,
+) -> None:
+    """Webhook should credit the wallet once when enabled and verified."""
     user_id = "test-user"
     ensure_user_profile(user_id, email="test@example.com", display_name="Test")
 
@@ -151,8 +154,34 @@ def test_yookassa_webhook_credits_wallet_once(auth_client: TestClient) -> None:
         },
     }
 
-    first = auth_client.post("/api/payments/yookassa/webhook", json=webhook_payload)
-    second = auth_client.post("/api/payments/yookassa/webhook", json=webhook_payload)
+    with patch("app.services.payment_service.load_settings") as mock_settings:
+        mock_settings.return_value = make_test_settings(
+            yookassa_webhook_enabled=True,
+            yookassa_shop_id="shop-id",
+            yookassa_secret_key="secret-key",
+        )
+        with patch(
+            "app.services.payment_service.httpx.Client"
+        ) as mock_client_cls:
+            mock_verify = httpx.Response(
+                200,
+                json={
+                    "id": provider_payment_id,
+                    "status": "succeeded",
+                    "paid": True,
+                },
+                request=httpx.Request("GET", YOOKASSA_API_URL),
+            )
+            mock_client_cls.return_value.__enter__.return_value.get.return_value = (
+                mock_verify
+            )
+
+            first = auth_client.post(
+                "/api/payments/yookassa/webhook", json=webhook_payload
+            )
+            second = auth_client.post(
+                "/api/payments/yookassa/webhook", json=webhook_payload
+            )
 
     assert first.status_code == 200
     assert second.status_code == 200
@@ -163,6 +192,129 @@ def test_yookassa_webhook_credits_wallet_once(auth_client: TestClient) -> None:
     order_response = auth_client.get(f"/api/account/payments/{order_id}")
     assert order_response.status_code == 200
     assert order_response.json()["status"] == "succeeded"
+
+
+def test_yookassa_webhook_ignored_when_disabled(auth_client: TestClient) -> None:
+    """Webhook should not credit the wallet when disabled (admin-managed mode)."""
+    user_id = "test-user"
+    ensure_user_profile(user_id, email="test@example.com", display_name="Test")
+
+    order_id = str(uuid.uuid4())
+    provider_payment_id = f"yk-{uuid.uuid4().hex[:12]}"
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO payment_orders (
+                id,
+                user_id,
+                package_id,
+                amount_rub,
+                credits,
+                status,
+                provider,
+                provider_payment_id,
+                idempotency_key
+            )
+            VALUES (%s, %s, 'pack_100', %s, 100, 'pending', 'yookassa', %s, %s)
+            """,
+            (order_id, user_id, Decimal("10.00"), provider_payment_id, str(uuid.uuid4())),
+        )
+
+    wallet_before = auth_client.get("/api/account/wallet").json()["credits_balance"]
+
+    webhook_payload = {
+        "type": "notification",
+        "event": "payment.succeeded",
+        "object": {
+            "id": provider_payment_id,
+            "status": "succeeded",
+            "metadata": {"order_id": order_id, "user_id": user_id},
+        },
+    }
+
+    response = auth_client.post("/api/payments/yookassa/webhook", json=webhook_payload)
+    assert response.status_code == 200
+
+    wallet_after = auth_client.get("/api/account/wallet").json()["credits_balance"]
+    assert wallet_after == wallet_before
+
+    order_response = auth_client.get(f"/api/account/payments/{order_id}")
+    assert order_response.status_code == 200
+    assert order_response.json()["status"] == "pending"
+
+
+def test_yookassa_webhook_rejects_unverified_payment(
+    auth_client: TestClient,
+) -> None:
+    """Webhook should ignore a succeeded event when YooKassa reports pending."""
+    user_id = "test-user"
+    ensure_user_profile(user_id, email="test@example.com", display_name="Test")
+
+    order_id = str(uuid.uuid4())
+    provider_payment_id = f"yk-{uuid.uuid4().hex[:12]}"
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO payment_orders (
+                id,
+                user_id,
+                package_id,
+                amount_rub,
+                credits,
+                status,
+                provider,
+                provider_payment_id,
+                idempotency_key
+            )
+            VALUES (%s, %s, 'pack_100', %s, 100, 'pending', 'yookassa', %s, %s)
+            """,
+            (order_id, user_id, Decimal("10.00"), provider_payment_id, str(uuid.uuid4())),
+        )
+
+    wallet_before = auth_client.get("/api/account/wallet").json()["credits_balance"]
+
+    webhook_payload = {
+        "type": "notification",
+        "event": "payment.succeeded",
+        "object": {
+            "id": provider_payment_id,
+            "status": "succeeded",
+            "metadata": {"order_id": order_id, "user_id": user_id},
+        },
+    }
+
+    with patch("app.services.payment_service.load_settings") as mock_settings:
+        mock_settings.return_value = make_test_settings(
+            yookassa_webhook_enabled=True,
+            yookassa_shop_id="shop-id",
+            yookassa_secret_key="secret-key",
+        )
+        with patch(
+            "app.services.payment_service.httpx.Client"
+        ) as mock_client_cls:
+            mock_verify = httpx.Response(
+                200,
+                json={"id": provider_payment_id, "status": "pending"},
+                request=httpx.Request("GET", YOOKASSA_API_URL),
+            )
+            mock_client_cls.return_value.__enter__.return_value.get.return_value = (
+                mock_verify
+            )
+
+            response = auth_client.post(
+                "/api/payments/yookassa/webhook", json=webhook_payload
+            )
+
+    assert response.status_code == 200
+
+    wallet_after = auth_client.get("/api/account/wallet").json()["credits_balance"]
+    assert wallet_after == wallet_before
+
+    order_response = auth_client.get(f"/api/account/payments/{order_id}")
+    assert order_response.status_code == 200
+    assert order_response.json()["status"] == "pending"
 
 
 def test_complete_payment_order_is_idempotent() -> None:
@@ -226,12 +378,18 @@ def test_handle_yookassa_notification_marks_canceled(auth_client: TestClient) ->
             (order_id, user_id, Decimal("50.00"), provider_payment_id, str(uuid.uuid4())),
         )
 
-    handle_yookassa_notification(
-        {
-            "event": "payment.canceled",
-            "object": {"id": provider_payment_id, "status": "canceled"},
-        }
-    )
+    with patch("app.services.payment_service.load_settings") as mock_settings:
+        mock_settings.return_value = make_test_settings(
+            yookassa_webhook_enabled=True,
+            yookassa_shop_id="shop-id",
+            yookassa_secret_key="secret-key",
+        )
+        handle_yookassa_notification(
+            {
+                "event": "payment.canceled",
+                "object": {"id": provider_payment_id, "status": "canceled"},
+            }
+        )
 
     order_response = auth_client.get(f"/api/account/payments/{order_id}")
     assert order_response.status_code == 200

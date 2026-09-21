@@ -173,7 +173,16 @@ def get_payment_order(*, order_id: str, user_id: str) -> dict[str, Any]:
 
 
 def handle_yookassa_notification(payload: dict[str, Any]) -> None:
-    """Process a YooKassa webhook notification."""
+    """Process a YooKassa webhook notification.
+
+    Auto-crediting is disabled unless ``YOOKASSA_WEBHOOK_ENABLED=true``.
+    When enabled, the payment is re-fetched from YooKassa and only credited
+    after it is confirmed as ``succeeded`` (payload is not trusted blindly).
+    """
+    settings = load_settings()
+    if not settings.yookassa_webhook_enabled:
+        return
+
     event = str(payload.get("event", ""))
     payment_object = payload.get("object")
     if not isinstance(payment_object, dict):
@@ -184,13 +193,37 @@ def handle_yookassa_notification(payload: dict[str, Any]) -> None:
         return
 
     if event == "payment.succeeded":
-        if payment_object.get("status") != "succeeded":
+        if not _verify_yookassa_payment(settings, provider_payment_id):
             return
         complete_payment_order(provider_payment_id=provider_payment_id)
         return
 
     if event == "payment.canceled":
         mark_payment_order_canceled(provider_payment_id=provider_payment_id)
+
+
+def _verify_yookassa_payment(
+    settings: Settings,
+    provider_payment_id: str,
+) -> bool:
+    """Confirm with YooKassa that the payment is actually succeeded."""
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.get(
+                f"{YOOKASSA_API_URL}/{provider_payment_id}",
+                auth=(settings.yookassa_shop_id, settings.yookassa_secret_key),
+            )
+    except httpx.HTTPError:
+        return False
+
+    if response.status_code != 200:
+        return False
+
+    payment = response.json()
+    return (
+        isinstance(payment, dict)
+        and str(payment.get("status")) == "succeeded"
+    )
 
 
 def complete_payment_order(*, provider_payment_id: str) -> WalletSnapshot | None:

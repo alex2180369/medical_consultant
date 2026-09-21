@@ -266,16 +266,21 @@ def _run_migrations(connection: psycopg.Connection) -> None:
         """
     )
 
-    connection.execute(
-        """
-        UPDATE users
-        SET status = 'approved'
-        WHERE status = 'pending'
-          AND approved_at IS NULL
-          AND rejected_at IS NULL
-          AND created_at < NOW() - INTERVAL '1 minute'
-        """
-    )
+    settings = load_settings()
+    if settings.auto_approve_after_minutes > 0:
+        connection.execute(
+            """
+            UPDATE users
+            SET status = 'approved',
+                approved_at = COALESCE(approved_at, NOW()),
+                approved_by = COALESCE(approved_by, 'auto')
+            WHERE status = 'pending'
+              AND approved_at IS NULL
+              AND rejected_at IS NULL
+              AND created_at < NOW() - make_interval(mins => %s)
+            """,
+            (settings.auto_approve_after_minutes,),
+        )
 
     admin_email = environ.get("ADMIN_EMAIL", "").strip().lower()
     if admin_email:

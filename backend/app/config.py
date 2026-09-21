@@ -46,6 +46,8 @@ class Settings:
     yandex_ocr_folder_id: str | None = None
     yandex_ocr_base_url: str = "https://ocr.api.cloud.yandex.net/ocr/v1"
     yandex_ocr_credits_per_page: int = 2
+    auto_approve_after_minutes: int = 0
+    yookassa_webhook_enabled: bool = False
 
 
 def load_settings() -> Settings:
@@ -115,4 +117,11 @@ def load_settings() -> Settings:
         yandex_ocr_credits_per_page=int(
             environ.get("YANDEX_OCR_CREDITS_PER_PAGE", "2")
         ),
+        auto_approve_after_minutes=int(
+            environ.get("AUTO_APPROVE_AFTER_MINUTES", "0")
+        ),
+        yookassa_webhook_enabled=environ.get(
+            "YOOKASSA_WEBHOOK_ENABLED", "false"
+        ).lower()
+        in {"1", "true", "yes"},
     )

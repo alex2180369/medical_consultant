@@ -40,6 +40,8 @@ def make_test_settings(**overrides: object) -> Settings:
         "yandex_ocr_folder_id": None,
         "yandex_ocr_base_url": "https://ocr.api.cloud.yandex.net/ocr/v1",
         "yandex_ocr_credits_per_page": 2,
+        "auto_approve_after_minutes": 0,
+        "yookassa_webhook_enabled": False,
     }
     defaults.update(overrides)
     return Settings(**defaults)
