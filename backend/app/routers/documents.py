@@ -2,7 +2,6 @@
 
 import uuid
 from pathlib import Path
-from shutil import copyfileobj
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -12,13 +11,49 @@ from app.database import get_connection
 from app.schemas import DocumentCostEstimateResponse, DocumentRecord
 from app.services.auth_service import AuthContext, get_auth_context
 from app.services.billing_errors import http_error_for_insufficient_credits
-from app.services.document_analyzer import extract_document_text
+from app.services.document_analyzer import (
+    extract_document_text,
+    validate_uploaded_file,
+)
 from app.services.document_cost_estimator import estimate_document_cost
 from app.services.wallet_service import InsufficientCreditsError
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 UPLOAD_DIR = load_settings().uploads_dir
+MAX_UPLOAD_BYTES = load_settings().max_upload_bytes
+
+
+def _copy_upload_limited(file: UploadFile, destination: Path) -> None:
+    """Copy an upload to disk, aborting when the size limit is exceeded."""
+    written = 0
+    with destination.open("wb") as output:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    detail="Файл слишком большой.",
+                )
+            output.write(chunk)
+
+
+def _reject_invalid_upload(destination: Path) -> None:
+    """Validate a stored upload and clean it up when rejected."""
+    try:
+        validate_uploaded_file(
+            destination,
+            max_bytes=MAX_UPLOAD_BYTES,
+        )
+    except ValueError as error:
+        destination.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=str(error),
+        ) from error
 
 
 def _estimate_to_response(estimate) -> DocumentCostEstimateResponse:
@@ -65,8 +100,8 @@ def estimate_document_upload(
     destination = UPLOAD_DIR / f"estimate_{uuid.uuid4().hex[:8]}_{original_name}"
 
     try:
-        with destination.open("wb") as output:
-            copyfileobj(file.file, output)
+        _copy_upload_limited(file, destination)
+        _reject_invalid_upload(destination)
         estimate = estimate_document_cost(
             destination,
             content_type=file.content_type or "",
@@ -88,8 +123,12 @@ def upload_document(
     original_name = Path(file.filename or "document").name
     destination = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}_{original_name}"
 
-    with destination.open("wb") as output:
-        copyfileobj(file.file, output)
+    try:
+        _copy_upload_limited(file, destination)
+        _reject_invalid_upload(destination)
+    except HTTPException:
+        destination.unlink(missing_ok=True)
+        raise
 
     estimate = estimate_document_cost(
         destination,

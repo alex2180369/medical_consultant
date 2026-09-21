@@ -33,6 +33,57 @@ MAX_STORED_TEXT = 8000
 MAX_CONTEXT_CHARS = 1500
 RECENT_DOCUMENTS_LIMIT = 3
 
+_MAGIC_PREFIXES: dict[str, bytes] = {
+    ".pdf": b"%PDF-",
+    ".png": b"\x89PNG\r\n\x1a\n",
+    ".jpg": b"\xff\xd8\xff",
+    ".jpeg": b"\xff\xd8\xff",
+    ".webp": b"RIFF",
+}
+
+
+def validate_uploaded_file(
+    path: Path,
+    *,
+    settings: Settings | None = None,
+    max_bytes: int | None = None,
+) -> None:
+    """Reject unsupported extensions and mismatched file contents.
+
+    Raises ValueError with a user-safe message when a file must not be accepted.
+    """
+    settings = settings or load_settings()
+    suffix = path.suffix.lower()
+    size = path.stat().st_size
+
+    if suffix not in IMAGE_EXTENSIONS | PDF_EXTENSIONS | TEXT_EXTENSIONS:
+        raise ValueError(
+            "Поддерживаются только изображения (JPG, PNG, WEBP), "
+            "PDF и текстовые файлы."
+        )
+
+    limit = max_bytes if max_bytes is not None else settings.max_upload_bytes
+    if size > limit:
+        raise ValueError(
+            f"Файл слишком большой (лимит {round(limit / (1024 * 1024), 1)} МБ)."
+        )
+
+    if suffix in TEXT_EXTENSIONS:
+        return
+
+    with path.open("rb") as handle:
+        header = handle.read(32)
+
+    if suffix == ".webp":
+        if not (header.startswith(b"RIFF") and header[8:12] == b"WEBP"):
+            raise ValueError("Файл не похож на изображение WEBP.")
+        return
+
+    expected = _MAGIC_PREFIXES[suffix]
+    if not header.startswith(expected):
+        kind = "PDF" if suffix in PDF_EXTENSIONS else "изображение"
+        raise ValueError(f"Файл не похож на {kind}.")
+
 OCR_PROMPT = """
 Извлеки текст с медицинского документа или снимка.
 Верни только распознанный текст и ключевые показатели без комментариев.

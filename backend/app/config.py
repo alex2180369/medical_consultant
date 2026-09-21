@@ -48,6 +48,7 @@ class Settings:
     yandex_ocr_credits_per_page: int = 2
     auto_approve_after_minutes: int = 0
     yookassa_webhook_enabled: bool = False
+    max_upload_bytes: int = 30 * 1024 * 1024
 
 
 def load_settings() -> Settings:
@@ -140,4 +141,5 @@ def load_settings() -> Settings:
             "YOOKASSA_WEBHOOK_ENABLED", "false"
         ).lower()
         in {"1", "true", "yes"},
+        max_upload_bytes=int(environ.get("MAX_UPLOAD_BYTES", "31457280")),
     )
