@@ -54,8 +54,24 @@ def load_settings() -> Settings:
     """Load settings from `.env` and process environment."""
     load_dotenv()
 
+    app_env = environ.get("APP_ENV", "development")
+    jwt_secret = environ.get("JWT_SECRET", "dev-insecure-change-me")
+
+    if app_env.strip().lower() == "production":
+        if (
+            not jwt_secret.strip()
+            or "change-me" in jwt_secret.lower()
+            or "dev-insecure" in jwt_secret.lower()
+            or len(jwt_secret.strip()) < 32
+        ):
+            raise RuntimeError(
+                "JWT_SECRET must be set to a strong secret in production. "
+                "Generate one with: python -c \"import secrets; "
+                "print(secrets.token_hex(32))\""
+            )
+
     return Settings(
-        app_env=environ.get("APP_ENV", "development"),
+        app_env=app_env,
         app_name=environ.get("APP_NAME", "Локальный медицинский ИИ-навигатор"),
         database_url=environ.get(
             "DATABASE_URL",
@@ -80,7 +96,7 @@ def load_settings() -> Settings:
         proxyapi_base_url=environ.get(
             "PROXYAPI_BASE_URL", "https://api.proxyapi.ru/openai/v1"
         ),
-        jwt_secret=environ.get("JWT_SECRET", "dev-insecure-change-me"),
+        jwt_secret=jwt_secret,
         jwt_algorithm=environ.get("JWT_ALGORITHM", "HS256"),
         jwt_expire_minutes=int(environ.get("JWT_EXPIRE_MINUTES", "10080")),
         frontend_url=environ.get(
