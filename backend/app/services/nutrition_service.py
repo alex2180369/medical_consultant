@@ -1,6 +1,7 @@
 """AI-assisted weekly nutrition plan generation."""
 
 import json
+import logging
 import re
 
 from app.config import Settings, load_settings
@@ -9,6 +10,8 @@ from app.services.llm_client import ChatMessage, chat_completion
 from app.services.llm_router import LlmTask, resolve_model_route
 from app.services.usage_service import UsageContext
 from app.services.wallet_service import InsufficientCreditsError
+
+logger = logging.getLogger(__name__)
 
 NUTRITION_SYSTEM_PROMPT = """
 Ты ИИ-нутрициолог для семейного локального медицинского приложения.
@@ -191,10 +194,11 @@ def generate_weekly_nutrition_plan(
         payload = _extract_json(completion.content)
     except InsufficientCreditsError:
         raise
-    except Exception as error:
+    except Exception:
+        logger.exception("LLM call failed for nutrition plan (model %s)", route.model)
         return NutritionPlanResponse(
             ai_status="failed",
-            message=f"Не удалось обновить меню ({route.model}): {error}",
+            message="Не удалось обновить меню. Пожалуйста, повторите попытку позже.",
         )
 
     menu = payload.get("menu")

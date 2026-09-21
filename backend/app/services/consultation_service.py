@@ -1,23 +1,22 @@
 """Multi-turn consultation chat for the assistant's first medical opinion."""
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal
 
 from app.config import Settings, load_settings
+from app.database import get_connection
+from app.schemas import ComplaintCreate, ComplaintRecord, MedicalProfile
+from app.services.document_analyzer import format_documents_for_context
 from app.services.ephemeral_session_service import (
     complete_consultation_without_history,
     is_ephemeral_dialog_user,
 )
-from app.database import get_connection
-from app.schemas import ComplaintCreate, ComplaintRecord, MedicalProfile
-from app.services.document_analyzer import format_documents_for_context
-from app.services.llm_client import ChatMessage, ChatCompletionResult, chat_completion
+from app.services.llm_client import ChatCompletionResult, ChatMessage, chat_completion
 from app.services.llm_router import LlmTask, resolve_model_route
-from app.services.usage_service import UsageContext
-from app.services.wallet_service import InsufficientCreditsError
 from app.services.symptom_analyzer import (
     SymptomAnalysisResult,
     _fetch_medication_notes,
@@ -27,6 +26,10 @@ from app.services.symptom_analyzer import (
     _needs_medication_review,
     resolve_symptom_task,
 )
+from app.services.usage_service import UsageContext
+from app.services.wallet_service import InsufficientCreditsError
+
+logger = logging.getLogger(__name__)
 
 ConsultationPhase = Literal["anamnesis", "conclusion"]
 MAX_USER_TURNS = 8
@@ -521,10 +524,15 @@ def continue_consultation(
         turn_usage = _billing_from_completion(None, completion)
     except InsufficientCreditsError as error:
         raise ValueError(error.message) from error
-    except Exception as error:
+    except Exception:
+        logger.exception(
+            "LLM call failed for consultation %s (model %s)",
+            consultation_id,
+            route.model,
+        )
         reply = (
-            f"Не удалось получить ответ от модели ({route.model}): {error}. "
-            "Попробуйте переформулировать сообщение."
+            "Не удалось получить ответ от модели. "
+            "Пожалуйста, повторите попытку позже."
         )
         _save_message(consultation_id, "assistant", reply)
         return ConsultationTurnResult(

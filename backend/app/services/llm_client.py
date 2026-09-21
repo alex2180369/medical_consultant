@@ -1,5 +1,6 @@
 """OpenAI-compatible client for configured LLM providers."""
 
+import logging
 from dataclasses import dataclass
 
 import httpx
@@ -12,6 +13,8 @@ from app.services.usage_service import (
     log_llm_usage,
     prepare_billable_request,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,9 +137,16 @@ def chat_completion(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as error:
+            logger.warning(
+                "LLM provider returned an error status. Provider=%s model=%s "
+                "status=%s body=%r",
+                route.provider,
+                route.model,
+                error.response.status_code,
+                error.response.text[:1000],
+            )
             raise LlmProviderError(
-                f"{error.response.status_code} {error.response.reason_phrase}: "
-                f"{error.response.text[:1000]}"
+                f"LLM provider returned HTTP {error.response.status_code}."
             ) from error
         data = response.json()
 

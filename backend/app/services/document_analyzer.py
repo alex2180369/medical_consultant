@@ -12,7 +12,11 @@ from app.config import Settings, load_settings
 from app.database import get_connection
 from app.services.llm_client import ChatMessage, chat_completion
 from app.services.llm_router import LlmTask
-from app.services.usage_service import UsageContext, log_ocr_usage, prepare_billable_request
+from app.services.usage_service import (
+    UsageContext,
+    log_ocr_usage,
+    prepare_billable_request,
+)
 from app.services.yandex_ocr import (
     MIN_USEFUL_TEXT_CHARS,
     YandexOcrError,
@@ -283,6 +287,7 @@ def extract_document_text(
                 analysis_status="unsupported",
             )
     except RuntimeError as error:
+        logger.exception("Failed to extract text from file %s", path.name)
         message = str(error)
         missing_key = (
             "API_KEY" in message
@@ -295,16 +300,31 @@ def extract_document_text(
                 "(OCR недоступен: задайте YANDEX_OCR_API_KEY или PROXYAPI_API_KEY.)"
             )
         else:
-            extracted = description or message
+            extracted = (
+                description
+                or "Не удалось распознать файл. Загрузите документ ещё раз."
+            )
         return DocumentExtractionResult(
             extracted_text=_truncate(extracted, MAX_STORED_TEXT),
             analysis_status="no_api_key" if missing_key else "failed",
         )
-    except Exception as error:
-        fallback = description or f"Не удалось разобрать файл: {error}"
+    except Exception:
+        logger.exception(
+            "Failed to extract text from file %s (status likely failed)",
+            path.name,
+        )
+        if description:
+            extracted = (
+                f"{description}\n\n"
+                "(OCR недоступен: задайте YANDEX_OCR_API_KEY или PROXYAPI_API_KEY.)"
+            )
+            analysis_status = "no_api_key"
+        else:
+            extracted = "Не удалось распознать файл. Загрузите документ ещё раз."
+            analysis_status = "failed"
         return DocumentExtractionResult(
-            extracted_text=_truncate(fallback, MAX_STORED_TEXT),
-            analysis_status="failed",
+            extracted_text=_truncate(extracted, MAX_STORED_TEXT),
+            analysis_status=analysis_status,
         )
 
     if description and extracted.strip():

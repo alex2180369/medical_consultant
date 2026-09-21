@@ -1,6 +1,7 @@
 """Compare assistant first opinion with in-person doctor opinion."""
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 
@@ -9,12 +10,14 @@ from app.database import get_connection
 from app.schemas import ComplaintRecord, MedicalProfile
 from app.services.llm_client import ChatMessage, chat_completion
 from app.services.llm_router import LlmTask, resolve_model_route
-from app.services.usage_service import UsageContext
-from app.services.wallet_service import InsufficientCreditsError
 from app.services.symptom_analyzer import (
     _load_profile,
     _load_recent_labs,
 )
+from app.services.usage_service import UsageContext
+from app.services.wallet_service import InsufficientCreditsError
+
+logger = logging.getLogger(__name__)
 
 COMPARISON_SYSTEM_PROMPT = """
 Ты медицинский информационный ассистент для личного использования в РФ.
@@ -228,11 +231,14 @@ def compare_opinions(
         payload = _extract_json(completion.content)
     except InsufficientCreditsError:
         raise
-    except Exception as error:
+    except Exception:
+        logger.exception(
+            "LLM call failed for opinion comparison (model %s)", route.model
+        )
         result = OpinionComparisonResult(
             ai_status="failed",
             ai_opinion_comparison=(
-                f"Не удалось сравнить мнения ({route.model}): {error}"
+                "Не удалось сравнить мнения. Пожалуйста, повторите попытку позже."
             ),
         )
         return complaint, result

@@ -1,6 +1,7 @@
 """AI analysis of symptoms and complaints."""
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -8,10 +9,12 @@ from typing import Literal
 from app.config import Settings, load_settings
 from app.database import get_connection
 from app.schemas import ComplaintCreate, MedicalProfile
-from app.services.llm_client import ChatMessage, ChatCompletionResult, chat_completion
+from app.services.llm_client import ChatCompletionResult, ChatMessage, chat_completion
 from app.services.llm_router import LlmTask, resolve_model_route
 from app.services.usage_service import UsageContext
 from app.services.wallet_service import InsufficientCreditsError
+
+logger = logging.getLogger(__name__)
 
 AnalysisMode = Literal["standard", "complex", "review"]
 
@@ -373,11 +376,13 @@ def analyze_complaint(
         payload = _extract_json(completion.content)
     except InsufficientCreditsError:
         raise
-    except Exception as error:
+    except Exception:
+        logger.exception("LLM call failed for symptom analysis (model %s)", route.model)
         return SymptomAnalysisResult(
             ai_status="failed",
             ai_analysis=(
-                f"Не удалось получить оценку от модели ({route.model}): {error}"
+                "Не удалось получить оценку от модели. "
+                "Пожалуйста, повторите попытку позже."
             ),
             ai_diagnosis="",
             ai_treatment="",
