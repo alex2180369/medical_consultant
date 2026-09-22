@@ -3,8 +3,8 @@
 from datetime import date
 
 from app.database import get_connection
-from app.services.usage_service import UsageContext, log_llm_usage
 from app.services.llm_router import LlmTask
+from app.services.usage_service import UsageContext, log_llm_usage
 
 
 def _seed_consultation_with_usage(*, user_id: str = "test-user") -> tuple[int, int]:

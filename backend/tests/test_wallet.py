@@ -94,7 +94,10 @@ def test_log_llm_usage_charges_wallet(auth_client) -> None:
 
     assert result is not None
     assert result.charged_credits > 0
-    assert result.balance_remaining == wallet_before.credits_balance - result.charged_credits
+    assert (
+        result.balance_remaining
+        == wallet_before.credits_balance - result.charged_credits
+    )
 
 
 def test_free_turn_used_when_balance_zero(auth_client) -> None:

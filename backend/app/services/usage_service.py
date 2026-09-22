@@ -9,7 +9,11 @@ from typing import Any, Literal
 
 from app.database import get_connection
 from app.services.llm_router import LlmTask
-from app.services.pricing import CREDITS_PER_RUB, calculate_usage_cost, calculate_yandex_ocr_cost
+from app.services.pricing import (
+    CREDITS_PER_RUB,
+    calculate_usage_cost,
+    calculate_yandex_ocr_cost,
+)
 from app.services.wallet_service import (
     InsufficientCreditsError,
     apply_usage_charge,

@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from app.services.account_service import hard_delete_user_data
 from app.services.user_service import (
-    approve_user,
     block_email,
     get_user_by_id,
-    reject_user,
 )
 
 

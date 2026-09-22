@@ -142,7 +142,9 @@ def register(
 def login(payload: LoginRequest) -> AuthResponse:
     """Authenticate an approved user and return a JWT."""
     user = get_user_by_email(payload.email)
-    if user is None or not verify_password(payload.password, str(user["password_hash"])):
+    if user is None or not verify_password(
+        payload.password, str(user["password_hash"])
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль.",

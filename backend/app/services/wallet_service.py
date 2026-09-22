@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import Any
 
 from app.database import get_connection
-from app.services.pricing import CREDITS_PER_RUB
 
 STARTER_CREDITS = 100
 FREE_TURNS_AT_ZERO = 2

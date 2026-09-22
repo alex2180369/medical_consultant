@@ -52,7 +52,9 @@ class ReceiptNotFoundError(LookupError):
     """Raised when a consultation receipt cannot be loaded."""
 
 
-def get_consultation_receipt(*, consultation_id: int, user_id: str) -> ConsultationReceipt:
+def get_consultation_receipt(
+    *, consultation_id: int, user_id: str
+) -> ConsultationReceipt:
     """Return a usage receipt for one consultation owned by the user."""
     with get_connection() as connection:
         consultation = connection.execute(

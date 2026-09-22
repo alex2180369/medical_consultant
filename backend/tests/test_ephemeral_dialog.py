@@ -8,14 +8,13 @@ from datetime import date
 from fastapi.testclient import TestClient
 
 from app.database import ensure_user_profile, get_connection
-from app.main import app
 from app.services.consultation_service import continue_consultation
 from app.services.ephemeral_session_service import (
     EPHEMERAL_DIALOG_CREDITS,
     is_ephemeral_dialog_user,
     start_new_ephemeral_dialog,
 )
-from app.services.wallet_service import admin_top_up, get_wallet, set_wallet_balance
+from app.services.wallet_service import admin_top_up, set_wallet_balance
 from tests.test_settings import make_test_settings
 
 
@@ -114,7 +113,9 @@ def test_start_new_ephemeral_dialog_resets_state() -> None:
         assert int(left["n"]) == 0
 
 
-def test_new_dialog_endpoint_forbidden_for_regular_user(auth_client: TestClient) -> None:
+def test_new_dialog_endpoint_forbidden_for_regular_user(
+    auth_client: TestClient,
+) -> None:
     response = auth_client.post("/api/consultations/new-dialog")
     assert response.status_code == 403
 

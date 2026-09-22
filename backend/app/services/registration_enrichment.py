@@ -39,7 +39,9 @@ def _extract_json_payload(content: str) -> dict[str, object]:
 def _fallback_enrichment(email: str, display_name: str) -> RegistrationEnrichment:
     local_part = email.split("@", 1)[0]
     parts = [part for part in re.split(r"[._\-+]+", local_part) if part]
-    suggested = " ".join(part.capitalize() for part in parts[:3]) if parts else display_name
+    suggested = (
+        " ".join(part.capitalize() for part in parts[:3]) if parts else display_name
+    )
     return RegistrationEnrichment(
         suggested_name=suggested,
         analysis=(

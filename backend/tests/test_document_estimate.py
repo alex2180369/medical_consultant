@@ -56,7 +56,9 @@ def test_estimate_endpoint(auth_client, tmp_path, monkeypatch) -> None:
     assert payload["requires_confirmation"] is False
 
 
-def test_upload_heavy_document_requires_confirmation(auth_client, tmp_path, monkeypatch) -> None:
+def test_upload_heavy_document_requires_confirmation(
+    auth_client, tmp_path, monkeypatch
+) -> None:
     """Heavy uploads should return HTTP 428 without confirmation."""
     from app.routers import documents as documents_router
 

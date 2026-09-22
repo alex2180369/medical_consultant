@@ -112,7 +112,9 @@ def test_admin_can_reject_and_block_email(client: TestClient, monkeypatch) -> No
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     apps_response = client.get("/api/admin/applications", headers=admin_headers)
-    pending_user = next(item for item in apps_response.json() if item["email"] == user_email)
+    pending_user = next(
+        item for item in apps_response.json() if item["email"] == user_email
+    )
 
     reject_response = client.post(
         f"/api/admin/users/{pending_user['id']}/reject",

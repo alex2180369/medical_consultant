@@ -197,7 +197,10 @@ def _load_consultation_meta(consultation_id: int, user_id: str) -> dict[str, str
         raise ValueError("Консультация не найдена.")
 
     if row["status"] != "active":
-        raise ValueError("Консультация уже завершена. Нажмите «Новый диалог» или отправьте новое сообщение.")
+        raise ValueError(
+            "Консультация уже завершена. Нажмите «Новый диалог» или "
+            "отправьте новое сообщение."
+        )
 
     return dict(row)
 
@@ -427,7 +430,8 @@ def continue_consultation(
         try:
             _load_consultation_meta(consultation_id, user_id)
         except ValueError as error:
-            # После conclusion фронт может ещё держать старый id — начинаем новую сессию.
+            # После conclusion фронт может ещё держать старый id —
+            # начинаем новую сессию.
             if "уже завершена" not in str(error):
                 raise
             start_date = occurred_at or date.today()

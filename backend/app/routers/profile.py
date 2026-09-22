@@ -63,7 +63,8 @@ def save_profile(
                 updated_at
             )
             VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
                 CURRENT_TIMESTAMP
             )
             ON CONFLICT(user_id) DO UPDATE SET

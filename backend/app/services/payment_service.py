@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -12,7 +11,6 @@ import httpx
 
 from app.config import Settings, load_settings
 from app.database import get_connection
-from app.services.pricing import CREDITS_PER_RUB
 from app.services.wallet_service import WalletSnapshot, _apply_credit_delta
 
 YOOKASSA_API_URL = "https://api.yookassa.ru/v3/payments"
@@ -326,7 +324,10 @@ def _create_yookassa_payment(
         )
 
     payload = response.json()
-    if "confirmation" not in payload or "confirmation_url" not in payload["confirmation"]:
+    if (
+        "confirmation" not in payload
+        or "confirmation_url" not in payload["confirmation"]
+    ):
         raise PaymentGatewayError("YooKassa не вернула ссылку для оплаты.")
     return payload
 

@@ -383,7 +383,9 @@ def update_user_password(user_id: str, password_hash: str) -> None:
         )
 
 
-def set_password_reset_token(user_id: str, plain_token: str, expires_at: datetime) -> None:
+def set_password_reset_token(
+    user_id: str, plain_token: str, expires_at: datetime
+) -> None:
     """Persist a hashed password reset token for a user."""
     token_hash = hash_reset_token(plain_token)
     with get_connection() as connection:

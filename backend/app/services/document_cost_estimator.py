@@ -36,7 +36,9 @@ class DocumentCostEstimate:
     model: str | None = None
 
 
-def _estimate_llm_ocr_credits(settings: Settings, *, prompt_tokens: int) -> tuple[int, str]:
+def _estimate_llm_ocr_credits(
+    settings: Settings, *, prompt_tokens: int
+) -> tuple[int, str]:
     route = resolve_model_route(LlmTask.IMAGING, settings)
     _, credits = calculate_usage_cost(
         model=route.model,
@@ -134,11 +136,14 @@ def estimate_document_cost(
             page_count=pages,
             prompt_tokens=prompt_tokens,
         )
-        requires_confirmation = credits >= HEAVY_ESTIMATE_CREDITS or pages >= HEAVY_PDF_PAGES
+        requires_confirmation = (
+            credits >= HEAVY_ESTIMATE_CREDITS or pages >= HEAVY_PDF_PAGES
+        )
         warning = None
         if requires_confirmation:
             warning = (
-                f"PDF похож на скан ({pages} стр.). OCR может стоить около {credits} 💎."
+                f"PDF похож на скан ({pages} стр.). "
+                f"OCR может стоить около {credits} 💎."
             )
         return DocumentCostEstimate(
             estimated_credits=credits,
@@ -164,7 +169,8 @@ def estimate_document_cost(
         warning = None
         if requires_confirmation:
             warning = (
-                f"Файл содержит много данных ({round(file_size / (1024 * 1024), 1)} МБ). "
+                f"Файл содержит много данных "
+                f"({round(file_size / (1024 * 1024), 1)} МБ). "
                 f"OCR может стоить около {credits} 💎."
             )
         return DocumentCostEstimate(

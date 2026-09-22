@@ -7,15 +7,12 @@ from decimal import Decimal
 from unittest.mock import patch
 
 import httpx
-import pytest
 from fastapi.testclient import TestClient
 
 from app.database import ensure_user_profile, get_connection
 from app.services.payment_service import (
     YOOKASSA_API_URL,
-    PaymentGatewayError,
     complete_payment_order,
-    create_payment_order,
     get_payment_gateway_status,
     handle_yookassa_notification,
 )
@@ -139,7 +136,13 @@ def test_yookassa_webhook_credited_only_when_enabled_and_verified(
             )
             VALUES (%s, %s, 'pack_100', %s, 100, 'pending', 'yookassa', %s, %s)
             """,
-            (order_id, user_id, Decimal("10.00"), provider_payment_id, str(uuid.uuid4())),
+            (
+                order_id,
+                user_id,
+                Decimal("10.00"),
+                provider_payment_id,
+                str(uuid.uuid4()),
+            ),
         )
 
     wallet_before = auth_client.get("/api/account/wallet").json()["credits_balance"]
@@ -218,7 +221,13 @@ def test_yookassa_webhook_ignored_when_disabled(auth_client: TestClient) -> None
             )
             VALUES (%s, %s, 'pack_100', %s, 100, 'pending', 'yookassa', %s, %s)
             """,
-            (order_id, user_id, Decimal("10.00"), provider_payment_id, str(uuid.uuid4())),
+            (
+                order_id,
+                user_id,
+                Decimal("10.00"),
+                provider_payment_id,
+                str(uuid.uuid4()),
+            ),
         )
 
     wallet_before = auth_client.get("/api/account/wallet").json()["credits_balance"]
@@ -270,7 +279,13 @@ def test_yookassa_webhook_rejects_unverified_payment(
             )
             VALUES (%s, %s, 'pack_100', %s, 100, 'pending', 'yookassa', %s, %s)
             """,
-            (order_id, user_id, Decimal("10.00"), provider_payment_id, str(uuid.uuid4())),
+            (
+                order_id,
+                user_id,
+                Decimal("10.00"),
+                provider_payment_id,
+                str(uuid.uuid4()),
+            ),
         )
 
     wallet_before = auth_client.get("/api/account/wallet").json()["credits_balance"]
@@ -375,7 +390,13 @@ def test_handle_yookassa_notification_marks_canceled(auth_client: TestClient) ->
             )
             VALUES (%s, %s, 'pack_500', %s, 500, 'pending', 'yookassa', %s, %s)
             """,
-            (order_id, user_id, Decimal("50.00"), provider_payment_id, str(uuid.uuid4())),
+            (
+                order_id,
+                user_id,
+                Decimal("50.00"),
+                provider_payment_id,
+                str(uuid.uuid4()),
+            ),
         )
 
     with patch("app.services.payment_service.load_settings") as mock_settings:

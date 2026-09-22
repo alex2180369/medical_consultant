@@ -4,7 +4,6 @@ import json
 
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.services.opinion_comparison_service import compare_opinions
 from tests.test_settings import make_test_settings
 
@@ -54,8 +53,9 @@ def test_compare_opinions_endpoint(monkeypatch, auth_client: TestClient) -> None
     from app.services import opinion_comparison_service
 
     def fake_compare(complaint_id, doctor_feedback, user_id, settings=None):
-        from app.schemas import ComplaintRecord
         from datetime import date, datetime
+
+        from app.schemas import ComplaintRecord
 
         return (
             ComplaintRecord(

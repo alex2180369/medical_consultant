@@ -170,17 +170,23 @@ def _run_migrations(connection: psycopg.Connection) -> None:
     """Apply incremental schema changes for user moderation."""
     connection.execute(
         """
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_suggested_name TEXT NOT NULL DEFAULT '';
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_email_analysis TEXT NOT NULL DEFAULT '';
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_confidence TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS
+            status TEXT NOT NULL DEFAULT 'pending';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS
+            role TEXT NOT NULL DEFAULT 'user';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS
+            ai_suggested_name TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS
+            ai_email_analysis TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS
+            ai_confidence TEXT NOT NULL DEFAULT '';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_analyzed_at TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_by TEXT;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS rejected_by TEXT;
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_reason TEXT NOT NULL DEFAULT '';
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS
+            rejection_reason TEXT NOT NULL DEFAULT '';
         """
     )
 

@@ -9,7 +9,7 @@ from typing import Annotated
 
 import bcrypt
 import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Header, HTTPException, status
 
 from app.config import load_settings
 from app.database import ensure_user_profile

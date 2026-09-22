@@ -1,8 +1,12 @@
 """Tests for LLM usage tracking (phase 0)."""
 
-from app.services.pricing import CREDITS_PER_RUB, calculate_usage_cost
 from app.services.llm_router import LlmTask
-from app.services.usage_service import UsageContext, get_user_usage_summary, log_llm_usage
+from app.services.pricing import CREDITS_PER_RUB, calculate_usage_cost
+from app.services.usage_service import (
+    UsageContext,
+    get_user_usage_summary,
+    log_llm_usage,
+)
 
 
 def test_calculate_usage_cost_applies_task_markup() -> None:

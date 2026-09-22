@@ -172,7 +172,9 @@ def _wait_operation(settings: Settings, operation_id: str) -> dict[str, object]:
             payload = response.json()
             if payload.get("done") is True:
                 if payload.get("error"):
-                    raise YandexOcrError(f"Yandex OCR operation error: {payload['error']}")
+                    raise YandexOcrError(
+                        f"Yandex OCR operation error: {payload['error']}"
+                    )
                 return payload
             time.sleep(ASYNC_POLL_INTERVAL_SEC)
 
