@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 ADMIN_EMAIL = "admin@example.com"
 os.environ["ADMIN_EMAIL"] = ADMIN_EMAIL
 
+PRODUCTION_JWT_SECRET = "production-test-jwt-secret-0123456789abcdef"
+
 
 def _register_pending(client: TestClient, *, email: str) -> None:
     response = client.post(
@@ -34,6 +36,7 @@ def _login(client: TestClient, *, email: str, password: str = "Secret123!") -> s
 def test_pending_user_cannot_login(client: TestClient, monkeypatch) -> None:
     """Pending users should be blocked at login in production mode."""
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("JWT_SECRET", PRODUCTION_JWT_SECRET)
     email = f"pending-{uuid.uuid4().hex[:8]}@example.com"
 
     _register_pending(client, email=email)
@@ -50,6 +53,7 @@ def test_pending_user_cannot_login(client: TestClient, monkeypatch) -> None:
 def test_admin_can_approve_and_user_can_login(client: TestClient, monkeypatch) -> None:
     """Admin should approve a pending application."""
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("JWT_SECRET", PRODUCTION_JWT_SECRET)
 
     admin_email = f"admin-{uuid.uuid4().hex[:8]}@example.com"
     user_email = f"approve-{uuid.uuid4().hex[:8]}@example.com"
@@ -92,6 +96,7 @@ def test_admin_can_approve_and_user_can_login(client: TestClient, monkeypatch) -
 def test_admin_can_reject_and_block_email(client: TestClient, monkeypatch) -> None:
     """Rejected users and their email should stay blocked."""
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("JWT_SECRET", PRODUCTION_JWT_SECRET)
 
     admin_email = f"admin-{uuid.uuid4().hex[:8]}@example.com"
     user_email = f"reject-{uuid.uuid4().hex[:8]}@example.com"

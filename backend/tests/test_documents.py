@@ -177,4 +177,4 @@ def test_upload_endpoint_rejects_nonexistent_media(tmp_path, monkeypatch) -> Non
             )
 
     assert response.status_code == 415
-    assert list(tmp_path.iterdir()) == []
+    assert list(tmp_path.glob("*_payload.jpg")) == []

@@ -89,7 +89,7 @@ def test_create_payment_order_returns_confirmation_url(
     mock_response = httpx.Response(
         200,
         json=_mock_yookassa_response(
-            payment_id="yk-test-payment",
+            payment_id=f"yk-{uuid.uuid4().hex[:12]}",
             confirmation_url="https://pay.yookassa.ru/confirm",
         ),
         request=httpx.Request("POST", "https://api.yookassa.ru/v3/payments"),
