@@ -101,7 +101,7 @@ def load_settings() -> Settings:
         jwt_algorithm=environ.get("JWT_ALGORITHM", "HS256"),
         jwt_expire_minutes=int(environ.get("JWT_EXPIRE_MINUTES", "10080")),
         frontend_url=environ.get(
-            "FRONTEND_URL", "https://помощники-консультанты.рф"
+            "FRONTEND_URL", "https://ii-doktor.ru"
         ),
         smtp_host=environ.get("SMTP_HOST"),
         smtp_port=int(environ.get("SMTP_PORT", "587")),
